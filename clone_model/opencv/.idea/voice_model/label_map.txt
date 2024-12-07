@@ -1,0 +1,10 @@
+100k	0
+200k	1
+500k	2
+huy_bo	3
+nap_tien	4
+rut_tien	5
+so_du	6
+thanh_toan	7
+thoat	8
+xoa	9

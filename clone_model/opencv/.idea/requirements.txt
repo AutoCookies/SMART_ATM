@@ -1,0 +1,8 @@
+flask
+pymongo
+tensorflow
+opencv-python
+scikit-learn
+flask_cors
+librosa
+pymongo
