@@ -18,8 +18,8 @@ from tensorflow.keras.models import load_model
 
 
 # Constants
-DATA_DIR = "converted_data2"  # Updated directory containing converted .wav files
-MODEL_DIRECTORY = "voice_model"
+DATA_DIR = "data\\converted_data2"  # Updated directory containing converted .wav files
+MODEL_DIRECTORY = "models\\voice_model"
 MAX_LEN = 30  # Adjusted MAX_LEN to match audio lengths
 N_MFCC = 13    # Number of MFCC features
 
@@ -28,7 +28,7 @@ PATIENCE_LR = 3  # Number of epochs with no improvement to reduce learning rate
 FACTOR_LR = 0.5  # Factor by which the learning rate will be reduced
 MIN_LR = 1e-8    # Minimum learning rate
 PATIENCE_ES = 6  # Number of epochs with no improvement to stop training
-EPOCHS = 100 # Number of times the model trains
+EPOCHS = 50 # Number of times the model trains
 
 def compress_audio(audio, threshold=0.8, ratio=1.25):
     """
@@ -178,9 +178,9 @@ if __name__ == "__main__":
     num_classes = len(label_map)
 
     # Check if model exists in the specified directory
-    if os.path.exists(os.path.join(MODEL_DIRECTORY, "rnn_attention_model3.h5")):
+    if os.path.exists(os.path.join(MODEL_DIRECTORY, "rnn_attention_model4.h5")):
         print("Loading existing model...")
-        model = load_model(os.path.join(MODEL_DIRECTORY, "rnn_attention_model3.h5"))
+        model = load_model(os.path.join(MODEL_DIRECTORY, "rnn_attention_model4.h5"))
     else:
         print("Building new model with attention and regularization...")
         model = build_model_with_attention(input_shape, num_classes)
@@ -204,14 +204,14 @@ if __name__ == "__main__":
         X_train, y_train,
         validation_data=(X_test, y_test),
         epochs=EPOCHS,
-        batch_size=128,
+        batch_size=64,
         callbacks=[early_stopping],
         shuffle=True
     )
 
     # Save Model and Label Map
     os.makedirs(MODEL_DIRECTORY, exist_ok=True)
-    model.save(os.path.join(MODEL_DIRECTORY, "rnn_attention_model3.h5"))
+    model.save(os.path.join(MODEL_DIRECTORY, "rnn_attention_model4.h5"))
     with open(os.path.join(MODEL_DIRECTORY, "label_map.txt"), "w") as f:
         for label, idx in label_map.items():
             f.write(f"{label}\t{idx}\n")
