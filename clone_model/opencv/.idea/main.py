@@ -192,7 +192,7 @@ def predict_command(command):
 def show_account_balance_window():
     balance_window = tk.Toplevel()
     balance_window.title("Số Dư Tài Khoản")
-    balance_window.geometry("400x300")
+    balance_window.geometry("1480x1200")
     
     balance_label = tk.Label(balance_window, text="Số dư tài khoản của bạn là:", font=("Arial", 14))
     balance_label.pack(pady=20)
@@ -201,33 +201,34 @@ def show_account_balance_window():
     balance_value_label = tk.Label(balance_window, text=f"{balance} VND", font=("Arial", 16, "bold"))
     balance_value_label.pack(pady=10)
 
-    close_button = tk.Button(balance_window, text="Đóng", font=("Arial", 14), width=20, command=balance_window.destroy)
+    close_button = tk.Button(balance_window, text="Đóng", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=20, command=balance_window.destroy)
     close_button.pack(pady=20)
 
 def show_recharge_window():
     recharge_window = tk.Toplevel()
     recharge_window.title("Nạp Tiền")
-    recharge_window.geometry("400x300")
+    recharge_window.geometry("1480x1200")
 
-    label = tk.Label(recharge_window, text="Chọn phương thức nạp tiền:", font=("Arial", 14))
+    label = tk.Label(recharge_window, text="Chọn phương thức nạp tiền:", bg="#95D5B2", fg="#1B4332", font=("Arial", 14))
     label.pack(pady=20)
 
-    credit_button = tk.Button(recharge_window, text="Nạp qua thẻ tín dụng", font=("Arial", 14), width=20)
+    credit_button = tk.Button(recharge_window, text="Nạp qua thẻ tín dụng", bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20)
     credit_button.pack(pady=10)
     
-    wallet_button = tk.Button(recharge_window, text="Nạp qua ví điện tử", font=("Arial", 14), width=20)
+    wallet_button = tk.Button(recharge_window, text="Nạp qua ví điện tử", bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20)
     wallet_button.pack(pady=10)
     
-    transfer_button = tk.Button(recharge_window, text="Nạp qua chuyển khoản ngân hàng", font=("Arial", 14), width=20)
+    transfer_button = tk.Button(recharge_window, text="Nạp qua chuyển khoản ngân hàng", bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20)
     transfer_button.pack(pady=10)
     
-    back_button = tk.Button(recharge_window, text="Quay lại", font=("Arial", 14), width=20, command=recharge_window.destroy)
+    back_button = tk.Button(recharge_window, text="Quay lại", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=20, command=recharge_window.destroy)
     back_button.pack(pady=10)
 
 def show_withdrawal_window():
     withdrawal_window = tk.Toplevel()
     withdrawal_window.title("Rút Tiền Mặt")
-    withdrawal_window.geometry("400x300")
+    withdrawal_window.geometry("1480x1200")
+    withdrawal_window.configure(bg="#E7F9E5")
 
     label = tk.Label(withdrawal_window, text="Nhập số tiền muốn rút:", font=("Arial", 14))
     label.pack(pady=20)
@@ -235,10 +236,10 @@ def show_withdrawal_window():
     amount_entry = tk.Entry(withdrawal_window, font=("Arial", 14), width=20)
     amount_entry.pack(pady=10)
 
-    confirm_button = tk.Button(withdrawal_window, text="Xác nhận", font=("Arial", 14), width=20)
+    confirm_button = tk.Button(withdrawal_window, text="Xác nhận", bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20)
     confirm_button.pack(pady=10)
 
-    cancel_button = tk.Button(withdrawal_window, text="Thoát", font=("Arial", 14), width=20, command=withdrawal_window.destroy)
+    cancel_button = tk.Button(withdrawal_window, text="Thoát", bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20, command=withdrawal_window.destroy)
     cancel_button.pack(pady=10)
     
     label.pack(pady=20)
@@ -284,21 +285,22 @@ def show_withdrawal_window():
 def show_payment_window():
     payment_window = tk.Toplevel()
     payment_window.title("Thanh Toán Trực Tuyến")
-    payment_window.geometry("400x300")
+    payment_window.geometry("1480x1200")
+    payment_window.configure(bg="#E7F9E5")
 
     label = tk.Label(payment_window, text="Chọn phương thức thanh toán:", font=("Arial", 14))
     label.pack(pady=20)
 
-    credit_button = tk.Button(payment_window, text="Thanh toán qua thẻ tín dụng", font=("Arial", 14), width=20)
+    credit_button = tk.Button(payment_window, text="Thanh toán qua thẻ tín dụng", bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20)
     credit_button.pack(pady=10)
     
-    wallet_button = tk.Button(payment_window, text="Thanh toán qua ví điện tử", font=("Arial", 14), width=20)
+    wallet_button = tk.Button(payment_window, text="Thanh toán qua ví điện tử", bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20)
     wallet_button.pack(pady=10)
     
-    transfer_button = tk.Button(payment_window, text="Thanh toán qua chuyển khoản ngân hàng", font=("Arial", 14), width=20)
+    transfer_button = tk.Button(payment_window, text="Thanh toán qua chuyển khoản ngân hàng", bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20)
     transfer_button.pack(pady=10)
     
-    back_button = tk.Button(payment_window, text="Quay lại", font=("Arial", 14), width=20, command=payment_window.destroy)
+    back_button = tk.Button(payment_window, text="Quay lại", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=20, command=payment_window.destroy)
     back_button.pack(pady=10)
 
 def show_welcome_window(recognized_name):
@@ -345,7 +347,7 @@ def show_welcome_window(recognized_name):
     check_info_button.pack(pady=10)
     deposit_button = tk.Button(left_frame, text="Nộp tiền mặt", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35)
     deposit_button.pack(pady=10)
-    balance_button = tk.Button(left_frame, text="Nộp tiền mặt", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35, command=show_account_balance_window)
+    balance_button = tk.Button(left_frame, text="Số dư tài khoản", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35, command=show_account_balance_window)
     balance_button.pack(pady = 10)
 
     right_frame = tk.Frame(button_frame, bg="#E7F9E5")
