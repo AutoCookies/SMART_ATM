@@ -13,15 +13,15 @@ import librosa
 import sounddevice as sd
 import tensorflow as tf
 
-model_subject = load_model('models\\user_id.keras')
-model_finger = load_model('models\\finger_type.keras')
+model_subject = load_model('models\\fingerprint_regconition\\user_id.keras')
+model_finger = load_model('models\\fingerprint_regconition\\finger_type.keras')
 
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-model_face_recognition = load_model('models/my_model2.h5')
-label_encoder = np.load('models/label_encoder.npy', allow_pickle=True)
+model_face_recognition = load_model('models/face_regconition/my_model2.h5')
+label_encoder = np.load('models/face_regconition/label_encoder.npy', allow_pickle=True)
 
-model_voice = load_model("voice_model\\rnn_attention_model3.h5")
-voice_labels = "voice_model\\label_map.txt"
+model_voice = load_model("models\\voice_model\\rnn_attention_model3.h5")
+voice_labels = "models\\voice_model\\label_map.txt"
 
 img_size = 96
 N_MFCC = 13
@@ -30,7 +30,7 @@ SAMPLE_RATE = 16000
 AUDIO_DURATION = 3
 
 label_map = {}
-with open(os.path.join("voice_model", "label_map.txt"), "r") as f:
+with open(os.path.join("models\\voice_model", "label_map.txt"), "r") as f:
     for line in f:
         label, idx = line.strip().split("\t")
         label_map[int(idx)] = label
@@ -243,40 +243,6 @@ def show_withdrawal_window():
     
     label.pack(pady=20)
 
-    amount_entry = tk.Entry(withdrawal_window, font=("Arial", 14), justify="center")
-    amount_entry.pack(pady=10)
-
-    def handle_withdrawal():
-        try:
-            amount = int(amount_entry.get())
-            if amount <= 0:
-                messagebox.showwarning("Cảnh Báo", "Số tiền phải lớn hơn 0.")
-            else:
-                # Add logic here for withdrawal validation and update
-                # E.g., Check balance, deduct amount, and log transaction
-                messagebox.showinfo("Thành Công", f"Bạn đã rút thành công {amount} VND.")
-                withdrawal_window.destroy()
-        except ValueError:
-            messagebox.showerror("Lỗi", "Vui lòng nhập số tiền hợp lệ.")
-
-    withdraw_button = tk.Button(
-        withdrawal_window,
-        text="Rút Tiền",
-        font=("Arial", 14),
-        width=20,
-        command=handle_withdrawal
-    )
-    withdraw_button.pack(pady=20)
-
-    back_button = tk.Button(
-        withdrawal_window,
-        text="Quay Lại",
-        font=("Arial", 14),
-        width=20,
-        command=withdrawal_window.destroy
-    )
-    back_button.pack(pady=10)
-
     # Function to listen to voice commands
     def listen_for_voice_commands():
         audio = record_audio(duration=3)  # Example: 5 seconds for recording
@@ -379,6 +345,8 @@ def show_welcome_window(recognized_name):
     check_info_button.pack(pady=10)
     deposit_button = tk.Button(left_frame, text="Nộp tiền mặt", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35)
     deposit_button.pack(pady=10)
+    balance_button = tk.Button(left_frame, text="Nộp tiền mặt", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35, command=show_account_balance_window)
+    balance_button.pack(pady = 10)
 
     right_frame = tk.Frame(button_frame, bg="#E7F9E5")
     right_frame.pack(side=tk.RIGHT, padx=50)
@@ -387,7 +355,7 @@ def show_welcome_window(recognized_name):
     transfer_button.pack(pady=10)
     recharge_button = tk.Button(right_frame, text="Nạp tiền ĐTDĐ", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35)
     recharge_button.pack(pady=10)
-    bill_payment_button = tk.Button(right_frame, text="Thanh toán hóa đơn", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35)
+    bill_payment_button = tk.Button(right_frame, text="Thanh toán hóa đơn", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35, command=show_payment_window)
     bill_payment_button.pack(pady=10)
     exit_button = tk.Button(right_frame, text="Thoát", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35, command=sys.exit)
     exit_button.pack(pady=10)
