@@ -7,23 +7,15 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import img_to_array
 import os
 import time
-import sys  # Import sys for program termination
-import speech_recognition as sr  # Import speech recognition library
-import os
-import numpy as np
+import sys
+import speech_recognition as sr
 import librosa
 import sounddevice as sd
 import tensorflow as tf
-import time
 
-# Dùng my_model2 để nhận diện mặt
-# Dùng rnn_attention_model2.h5 để nhận diện giọng nói.
-
-# Load models for fingerprint recognition
 model_subject = load_model('models\\user_id.keras')
 model_finger = load_model('models\\finger_type.keras')
 
-# Load the models for face detection and recognition
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 model_face_recognition = load_model('models/my_model2.h5')
 label_encoder = np.load('models/label_encoder.npy', allow_pickle=True)
@@ -31,12 +23,11 @@ label_encoder = np.load('models/label_encoder.npy', allow_pickle=True)
 model_voice = load_model("voice_model\\rnn_attention_model3.h5")
 voice_labels = "voice_model\\label_map.txt"
 
-# Image size
 img_size = 96
-N_MFCC = 13  # Number of MFCC features
-MAX_LEN = 30  # Adjusted MAX_LEN to match audio lengths
-SAMPLE_RATE = 16000  # Sample rate for audio recording
-AUDIO_DURATION = 3  # Duration of the audio in seconds
+N_MFCC = 13
+MAX_LEN = 30
+SAMPLE_RATE = 16000
+AUDIO_DURATION = 3
 
 label_map = {}
 with open(os.path.join("voice_model", "label_map.txt"), "r") as f:
@@ -44,42 +35,39 @@ with open(os.path.join("voice_model", "label_map.txt"), "r") as f:
         label, idx = line.strip().split("\t")
         label_map[int(idx)] = label
 
-# Function for fingerprint image preprocessing
 def preprocess_image(img_path):
     img_array = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
     img_resized = cv2.resize(img_array, (img_size, img_size))
     img_array = np.array(img_resized)
-    img_array = np.expand_dims(img_array, axis=-1)  # Add channel dimension for grayscale
-    img_array = img_array / 255.0  # Normalize the image
-    return np.expand_dims(img_array, axis=0)  # Add batch dimension
+    img_array = np.expand_dims(img_array, axis=-1)
+    img_array = img_array / 255.0
+    return np.expand_dims(img_array, axis=0)
 
 def record_audio(duration=AUDIO_DURATION, sample_rate=SAMPLE_RATE):
     print("Recording...")
     audio = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=1, dtype='float32')
-    sd.wait()  # Wait for the recording to finish
+    sd.wait()
     print("Recording complete")
     return audio.flatten()
 
 def extract_mfcc_from_audio(audio, sample_rate=SAMPLE_RATE):
     audio = librosa.util.normalize(audio)  # Normalize audio
     mfcc = librosa.feature.mfcc(y=audio, sr=sample_rate, n_mfcc=N_MFCC)
-    mfcc = (mfcc - np.mean(mfcc, axis=1, keepdims=True)) / np.std(mfcc, axis=1, keepdims=True)  # Normalize MFCC
-    # Padding or truncating to ensure fixed length
+    mfcc = (mfcc - np.mean(mfcc, axis=1, keepdims=True)) / np.std(mfcc, axis=1, keepdims=True)
     if mfcc.shape[1] < MAX_LEN:
         pad_width = MAX_LEN - mfcc.shape[1]
         mfcc = np.pad(mfcc, pad_width=((0, 0), (0, pad_width)), mode='constant')
     else:
         mfcc = mfcc[:, :MAX_LEN]
-    return mfcc.T  # Transpose to match the expected input shape
+    return mfcc.T
 
 def predict_audio_class(audio):
-    mfcc = extract_mfcc_from_audio(audio)  # Extract MFCC features
-    mfcc = np.expand_dims(mfcc, axis=0)  # Add batch dimension
+    mfcc = extract_mfcc_from_audio(audio)
+    mfcc = np.expand_dims(mfcc, axis=0)
     prediction = model_voice.predict(mfcc)
     predicted_class = np.argmax(prediction, axis=1)[0]
     return label_map[predicted_class]
 
-# Predict the subject ID and finger number
 def predict_fingerprint(img_path):
     img_array = preprocess_image(img_path)
 
@@ -91,7 +79,6 @@ def predict_fingerprint(img_path):
 
     return subject_id, finger_num
 
-# Function for face recognition processing
 def preprocess_face(face_roi):
     face_resized = cv2.resize(face_roi, (64, 64))
     face_array = img_to_array(face_resized) / 255.0
@@ -100,10 +87,8 @@ def preprocess_face(face_roi):
 def process_frame(frame, face_cascade, model, label_encoder):
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
-
     for (x, y, w, h) in faces:
         cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
-
         face_roi = frame[y:y + h, x:x + w]
         face_array = preprocess_face(face_roi)
         prediction = model.predict(face_array)
@@ -111,14 +96,11 @@ def process_frame(frame, face_cascade, model, label_encoder):
         label = label_encoder[predicted_class]
 
         cv2.putText(frame, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 0, 0), 2)
+        return label
+    return None
 
-        return label  # Return the recognized label
-
-    return None  # If no face is detected, return None
-
-# Function for face recognition from webcam with timeout
 def recognize_face_from_webcam_with_delay(face_cascade, model, label_encoder, subject_id, delay=7, timeout=20):
-    cap = cv2.VideoCapture(0)  # Open webcam
+    cap = cv2.VideoCapture(0)
     start_time = time.time()
 
     while time.time() - start_time < delay:
@@ -159,7 +141,6 @@ def recognize_face_from_webcam_with_delay(face_cascade, model, label_encoder, su
     cv2.destroyAllWindows()
     return None
 
-# Updated function to handle fingerprint, face, and voice recognition together
 def start_face_recognition(subject_id, root):
     attempts = 0
     while attempts < 3:
@@ -168,97 +149,69 @@ def start_face_recognition(subject_id, root):
         )
         if face_recognized and str(face_recognized) == str(subject_id):
             messagebox.showinfo("Success", "WELCOME! All checks passed.")
-            root.destroy()  # Close the upload GUI
+            root.destroy()
             show_welcome_window(face_recognized)
             return True
         else:
             attempts += 1
             messagebox.showwarning("Cảnh báo!", f"Lần thử thứ {attempts}/3 thất bại. Xin hãy thử lại.")
-
-    # If attempts exceed 3, capture the face of the person
     capture_unauthorized_face()
     messagebox.showerror("Lỗi!", "Vượt quá số lần thử cho phép. Truy cập bị từ chối.")
     return False
 
 
 def capture_unauthorized_face():
-    # Initialize the webcam
     cap = cv2.VideoCapture(0)
-    
-    # Check if the webcam is opened correctly
     if not cap.isOpened():
         print("Error: Could not access the webcam.")
         return
-
-    # Capture a frame from the webcam
     ret, frame = cap.read()
-
     if ret:
-        # Save the captured frame as an image (can be used for logging or further analysis)
         cv2.imwrite("unauthorized_person\\unauthorized_access.jpg", frame)
         print("Unauthorized access attempt recorded.")
-
-    # Release the webcam
     cap.release()
     cv2.destroyAllWindows()
 
 def load_label_map(label_map_path):
-    # Load label map from file (e.g., a text file with class labels)
     label_map = {}
     with open(label_map_path, 'r') as file:
         lines = file.readlines()
         for line in lines:
-            # Assuming each line is in the form "index label"
             index, label = line.strip().split()
             label_map[int(index)] = label
     return label_map
 
-# Function to predict the voice command using the trained model
 def predict_command(command):
-    # For the purpose of this example, assume command is preprocessed to a suitable format
-    # In practice, you would preprocess the command into a feature vector matching your model's input.
-    # Here, we simulate prediction by creating a mock-up of preprocessing.
+    features = np.random.rand(1, 100)
 
-    # A placeholder preprocessing step (you should implement actual preprocessing)
-    features = np.random.rand(1, 100)  # Replace with actual feature extraction
-
-    # Make the prediction using the model
     prediction = model_voice.predict(features)
     predicted_class = np.argmax(prediction, axis=1)[0]
-
-    # Map the predicted class to a human-readable command
+    
     return predicted_class
 
 def show_account_balance_window():
-    # Function to show the account balance window
     balance_window = tk.Toplevel()
     balance_window.title("Số Dư Tài Khoản")
     balance_window.geometry("400x300")
-
-    # Creating a label to display the account balance
+    
     balance_label = tk.Label(balance_window, text="Số dư tài khoản của bạn là:", font=("Arial", 14))
     balance_label.pack(pady=20)
 
-    # Example balance, can be dynamically fetched from a real system
-    balance = 500000  # Example account balance
+    balance = 500000
     balance_value_label = tk.Label(balance_window, text=f"{balance} VND", font=("Arial", 16, "bold"))
     balance_value_label.pack(pady=10)
 
-    # Button to close the balance window
     close_button = tk.Button(balance_window, text="Đóng", font=("Arial", 14), width=20, command=balance_window.destroy)
     close_button.pack(pady=20)
-    
-# Show the recharge window (Nạp Tiền)
+
 def show_recharge_window():
     recharge_window = tk.Toplevel()
     recharge_window.title("Nạp Tiền")
     recharge_window.geometry("400x300")
 
-    # Label for recharge options
     label = tk.Label(recharge_window, text="Chọn phương thức nạp tiền:", font=("Arial", 14))
     label.pack(pady=20)
 
-    # Buttons for different recharge options
     credit_button = tk.Button(recharge_window, text="Nạp qua thẻ tín dụng", font=("Arial", 14), width=20)
     credit_button.pack(pady=10)
     
@@ -271,20 +224,17 @@ def show_recharge_window():
     back_button = tk.Button(recharge_window, text="Quay lại", font=("Arial", 14), width=20, command=recharge_window.destroy)
     back_button.pack(pady=10)
 
-# Function for simulating the ATM withdrawal window
 def show_withdrawal_window():
     withdrawal_window = tk.Toplevel()
     withdrawal_window.title("Rút Tiền Mặt")
     withdrawal_window.geometry("400x300")
 
-    # Creating a label and an entry for the withdrawal amount
     label = tk.Label(withdrawal_window, text="Nhập số tiền muốn rút:", font=("Arial", 14))
     label.pack(pady=20)
 
     amount_entry = tk.Entry(withdrawal_window, font=("Arial", 14), width=20)
     amount_entry.pack(pady=10)
 
-    # Button to confirm withdrawal
     confirm_button = tk.Button(withdrawal_window, text="Xác nhận", font=("Arial", 14), width=20)
     confirm_button.pack(pady=10)
 
@@ -370,11 +320,9 @@ def show_payment_window():
     payment_window.title("Thanh Toán Trực Tuyến")
     payment_window.geometry("400x300")
 
-    # Label for payment options
     label = tk.Label(payment_window, text="Chọn phương thức thanh toán:", font=("Arial", 14))
     label.pack(pady=20)
 
-    # Buttons for different payment options
     credit_button = tk.Button(payment_window, text="Thanh toán qua thẻ tín dụng", font=("Arial", 14), width=20)
     credit_button.pack(pady=10)
     
@@ -396,18 +344,16 @@ def show_welcome_window(recognized_name):
     canvas_frame = tk.Frame(welcome_window, bg="#E7F9E5")
     canvas_frame.pack(expand=True, pady=20)
 
-    # Create a canvas to add the shadow and border
     canvas = tk.Canvas(canvas_frame, width=600, height=100, bg="#E7F9E5", highlightthickness=0)
     canvas.pack()
 
-    # Add shadow rectangle
     canvas.create_rectangle(
-        15, 15, 585, 95,  # Coordinates for shadow
+        15, 15, 585, 95,
         fill="#A6D7A3", outline=""
     )
 
     canvas.create_rectangle(
-        10, 10, 580, 90,  # Hình chính
+        10, 10, 580, 90,
         fill="#E7F9E5", outline="#2D6A4F", width=3
     )
 
@@ -446,7 +392,6 @@ def show_welcome_window(recognized_name):
     exit_button = tk.Button(right_frame, text="Thoát", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35, command=sys.exit)
     exit_button.pack(pady=10)
 
-    # Voice recognition logic to trigger corresponding button
     def listen_for_voice_commands():
         audio = record_audio(duration=AUDIO_DURATION)
         predicted_label = predict_audio_class(audio)
@@ -454,7 +399,7 @@ def show_welcome_window(recognized_name):
         
         if str(predicted_label) == "rut_tien":
             print("CHÀO MỪNG BẠN ĐẾN VỚI GIAO DIỆN RÚT TIỀN")
-            show_withdrawal_window()  # Open the withdrawal window when recognized
+            show_withdrawal_window()
         elif str(predicted_label) == "so_du":
             print("CHÀO MỪNG BẠN ĐẾN VỚI GIAO DIỆN SỐ DƯ")
             show_account_balance_window()
@@ -476,48 +421,38 @@ def fingerprint_upload_window(root):
     root.title("Fingerprint Upload")
     root.geometry("400x500")
 
-    # Title label
     label = tk.Label(root, text="Xin hãy xác nhận vân tay của bạn", font=("Arial", 16))
     label.pack(pady=20)
 
-    # Image label placeholder
-    image_label = tk.Label(root)  # Placeholder for the image
+    image_label = tk.Label(root)
     image_label.pack(pady=10)
 
-    # Scanning status label
-    scanning_label = tk.Label(root, text="", font=("Arial", 14))  # Placeholder for scanning text
+    scanning_label = tk.Label(root, text="", font=("Arial", 14)) 
     scanning_label.pack()
 
-    # Prediction result label
-    prediction_label = tk.Label(root, text="", font=("Arial", 14), fg="green")  # Label for prediction result
+    prediction_label = tk.Label(root, text="", font=("Arial", 14), fg="green")
     prediction_label.pack(pady=10)
 
     def upload_fingerprint():
         file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.png;*.jpg;*.jpeg;*.bmp")])
         if file_path:
-            # Display the image
             img = Image.open(file_path)
-            img = img.resize((200, 200), Image.Resampling.LANCZOS)  # Updated resizing method
+            img = img.resize((200, 200), Image.Resampling.LANCZOS)
             photo = ImageTk.PhotoImage(img)
             image_label.config(image=photo)
             image_label.image = photo
-
-            # Update scanning text
+            
             scanning_label.config(text="Đang quét vân tay, xin vui lòng đợi trong giây lát...", fg="orange")
-
-            # Simulate fingerprint processing
-            root.after(2000, lambda: process_fingerprint(file_path))  # Simulate delay
+            root.after(2000, lambda: process_fingerprint(file_path))
 
     def process_fingerprint(file_path):
-        subject_id, finger_num = predict_fingerprint(file_path)  # This function is assumed to give subject_id and finger_num
+        subject_id, finger_num = predict_fingerprint(file_path)
         messagebox.showinfo("Fingerprint Prediction", f"Subject ID: {subject_id}, Finger Type: {finger_num}")
-        
-        # Update the prediction result on the GUI
+
         prediction_label.config(text=f"Subject ID: {subject_id}, Finger Type: {finger_num}")
 
-        # Continue with face recognition if prediction is successful
         if start_face_recognition(subject_id, root):
-            root.destroy()  # Close the upload GUI
+            root.destroy()
             show_welcome_window(str(subject_id))
 
     upload_button = tk.Button(root, text="Upload Fingerprint", font=("Arial", 14), command=upload_fingerprint)
@@ -526,7 +461,6 @@ def fingerprint_upload_window(root):
     exit_button = tk.Button(root, text="Exit", font=("Arial", 14), command=root.quit)
     exit_button.pack(pady=10)
 
-# Initialize main window
 root = tk.Tk()
 root.title("SMART ATM SYSTEM")
 root.geometry("500x400")
