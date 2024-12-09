@@ -8,4 +8,5 @@
 /dataSources.local.xml
 
 env
-data
+/.idea/data
+models

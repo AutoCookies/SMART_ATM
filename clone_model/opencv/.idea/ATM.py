@@ -107,10 +107,10 @@ def process_frame(frame, face_cascade, model, label_encoder):
         return label
     return None
 
-def recognize_face_from_webcam_with_delay(face_cascade, model, label_encoder, subject_id, delay=7, timeout=20):
-    cap = cv2.VideoCapture(0)
+def recognize_face_from_webcam_with_delay(face_cascade, model, label_encoder, subject_id, cap, delay=7, timeout=20):
     start_time = time.time()
 
+    # Giai đoạn đợi (delay)
     while time.time() - start_time < delay:
         ret, frame = cap.read()
         if not ret:
@@ -123,10 +123,9 @@ def recognize_face_from_webcam_with_delay(face_cascade, model, label_encoder, su
         cv2.putText(frame, "Keep your face steady in front of the camera", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
         cv2.imshow("Face Recognition - Initializing", frame)
         if cv2.waitKey(1) % 256 == 27:
-            cap.release()
-            cv2.destroyAllWindows()
             return None
 
+    # Giai đoạn nhận diện
     start_time = time.time()
     while True:
         ret, frame = cap.read()
@@ -136,8 +135,6 @@ def recognize_face_from_webcam_with_delay(face_cascade, model, label_encoder, su
         recognized_label = process_frame(frame, face_cascade, model, label_encoder)
         if recognized_label and str(recognized_label) == str(subject_id):
             cv2.imshow("Face Recognition", frame)
-            cap.release()
-            cv2.destroyAllWindows()
             return recognized_label
         cv2.imshow("Face Recognition", frame)
         if time.time() - start_time > timeout:
@@ -145,16 +142,15 @@ def recognize_face_from_webcam_with_delay(face_cascade, model, label_encoder, su
         if cv2.waitKey(1) % 256 == 27:
             break
 
-    cap.release()
-    cv2.destroyAllWindows()
     return None
 
-def start_face_recognition(subject_id, root):
+def start_face_recognition(subject_id, root, cap):
     attempts = 0
     while attempts < 3:
         face_recognized = recognize_face_from_webcam_with_delay(
-            face_cascade, model_face_recognition, label_encoder, subject_id, delay=7, timeout=20
+            face_cascade, model_face_recognition, label_encoder, subject_id, cap, delay=7, timeout=20
         )
+        
         if face_recognized and str(face_recognized) == str(subject_id):
             messagebox.showinfo("Success", "WELCOME! All checks passed.")
             root.destroy()
@@ -388,28 +384,28 @@ def show_welcome_window(recognized_name):
             print("CHÀO MỪNG BẠN ĐẾN VỚI GIAO DIỆN THANH TOÁN TRỰC TUYẾN")
             show_payment_window()
         elif str(predicted_label) == 'thoat':
-            root.quit()
+            welcome_window.destroy()
         else:
             print('CÁC LỆNH KHÁC')
 
     listen_for_voice_commands_button = tk.Button(welcome_window, text="Start Listening for Commands", font=("Arial", 14), command=listen_for_voice_commands)
     listen_for_voice_commands_button.pack(pady=20)
 
-def fingerprint_upload_window():
+def fingerprint_upload_window(cap):
     finger_print_window = tk.Toplevel()
     finger_print_window.title("Fingerprint Upload")
     finger_print_window.geometry("400x500")
 
-    label = tk.Label(root, text="Xin hãy xác nhận vân tay của bạn", font=("Arial", 16))
+    label = tk.Label(finger_print_window, text="Xin hãy xác nhận vân tay của bạn", font=("Arial", 16))
     label.pack(pady=20)
 
-    image_label = tk.Label(root)
+    image_label = tk.Label(finger_print_window)
     image_label.pack(pady=10)
 
-    scanning_label = tk.Label(root, text="", font=("Arial", 14)) 
+    scanning_label = tk.Label(finger_print_window, text="", font=("Arial", 14)) 
     scanning_label.pack()
 
-    prediction_label = tk.Label(root, text="", font=("Arial", 14), fg="green")
+    prediction_label = tk.Label(finger_print_window, text="", font=("Arial", 14), fg="green")
     prediction_label.pack(pady=10)
 
     def upload_fingerprint():
@@ -422,22 +418,20 @@ def fingerprint_upload_window():
             image_label.image = photo
             
             scanning_label.config(text="Đang quét vân tay, xin vui lòng đợi trong giây lát...", fg="orange")
-            root.after(2000, lambda: process_fingerprint(file_path))
+            root.after(2000, lambda: process_fingerprint(file_path, cap))
 
-    def process_fingerprint(file_path):
+    def process_fingerprint(file_path, cap):
         subject_id, finger_num = predict_fingerprint(file_path)
         messagebox.showinfo("Fingerprint Prediction", f"Subject ID: {subject_id}, Finger Type: {finger_num}")
-
         prediction_label.config(text=f"Subject ID: {subject_id}, Finger Type: {finger_num}")
-
-        if start_face_recognition(subject_id, root):
+        if start_face_recognition(subject_id, root, cap):
             root.destroy()
             show_welcome_window(str(subject_id))
 
-    upload_button = tk.Button(root, text="Upload Fingerprint", font=("Arial", 14), command=upload_fingerprint)
+    upload_button = tk.Button(finger_print_window, text="Upload Fingerprint", font=("Arial", 14), command=upload_fingerprint)
     upload_button.pack(pady=10)
 
-    exit_button = tk.Button(root, text="Exit", font=("Arial", 14), command=root.quit)
+    exit_button = tk.Button(finger_print_window, text="Exit", font=("Arial", 14), command=root.quit)
     exit_button.pack(pady=10)
     
 def play_goodbye():
@@ -491,8 +485,8 @@ def detect_face_and_greet():
                 print(f"Predicted label: {predicted_label}")
 
                 if predicted_label == "bat_dau":
-                    fingerprint_upload_window()
-                    bat_dau_detected = True  # Cờ đã phát hiện lệnh "bat_dau"
+                    fingerprint_upload_window(cap)
+                    bat_dau_detected = True
 
                 time.sleep(3)  # Optional delay
 
@@ -503,7 +497,7 @@ def detect_face_and_greet():
                 if no_face_start_time is None:
                     no_face_start_time = time.time()
 
-                if time.time() - no_face_start_time >= 2:
+                if time.time() - no_face_start_time >= 5:
                     play_goodbye()
                     face_present = False
                     break
