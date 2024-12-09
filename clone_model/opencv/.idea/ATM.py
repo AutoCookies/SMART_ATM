@@ -23,7 +23,7 @@ face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_fronta
 model_face_recognition = load_model('models/face_regconition/my_model2.h5')
 label_encoder = np.load('models/face_regconition/label_encoder.npy', allow_pickle=True)
 
-model_voice = load_model("models\\voice_model\\rnn_attention_model4.h5")
+model_voice = load_model("models\\voice_model\\voice_attention_reg.h5")
 voice_labels = "models\\voice_model\\label_map.txt"
 GREETING_AUDIO_PATH = "openSound.wav"
 GOOGBYE_AUDIO_PATH = "goodBye.wav"
@@ -500,7 +500,7 @@ def detect_face_and_greet():
                 if time.time() - no_face_start_time >= 5:
                     play_goodbye()
                     face_present = False
-                    break
+                    # break
 
             detected = False
 

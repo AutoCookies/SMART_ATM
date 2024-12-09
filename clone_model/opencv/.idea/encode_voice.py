@@ -2,8 +2,8 @@ import os
 from pydub import AudioSegment
 
 # Constants
-DATA_DIR = "C:\\Users\Admin\\Downloads\\real_voice_test"  # Directory containing .aac files
-OUTPUT_DIR = "converted_real_data"  # Directory to save re-encoded .wav files
+DATA_DIR = "clone_model\opencv\.idea\stuff_to_enhance_model\crowd-worried-90368.mp3"  # Directory containing .aac files
+OUTPUT_DIR = "clone_model\opencv\.idea\stuff_to_enhance_model"  # Directory to save re-encoded .wav files
 TARGET_SAMPLE_RATE = 16000  # Target sample rate in Hz
 TARGET_BIT_DEPTH = 16  # Target bit depth
 

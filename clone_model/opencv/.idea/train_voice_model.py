@@ -19,6 +19,7 @@ from tensorflow.keras.models import load_model
 
 # Constants
 DATA_DIR = "data\\converted_data2"  # Updated directory containing converted .wav files
+MODEL_NAME = "voice_attention_reg.h5"
 MODEL_DIRECTORY = "models\\voice_model"
 MAX_LEN = 30  # Adjusted MAX_LEN to match audio lengths
 N_MFCC = 13    # Number of MFCC features
@@ -28,9 +29,9 @@ PATIENCE_LR = 3  # Number of epochs with no improvement to reduce learning rate
 FACTOR_LR = 0.5  # Factor by which the learning rate will be reduced
 MIN_LR = 1e-8    # Minimum learning rate
 PATIENCE_ES = 6  # Number of epochs with no improvement to stop training
-EPOCHS = 50 # Number of times the model trains
+EPOCHS = 100 # Number of times the model trains
 
-def compress_audio(audio, threshold=0.8, ratio=1.25):
+def compress_audio(audio, threshold=0.8, ratio=0.85):
     """
     Apply time stretching to compress the dynamic range of the audio.
     Parameters:
@@ -53,7 +54,7 @@ def normalize_audio(audio):
     return audio / audio_max
 
 
-def augment_audio(audio, sample_rate, noise_factor=0.005, stretch_rate=1.1, pitch_steps=4):
+def augment_audio(audio, sample_rate, noise_factor=0.007, stretch_rate=1.3, pitch_steps=5):
     # Adding noise
     noise = np.random.randn(len(audio))
     audio_noisy = audio + noise_factor * noise
@@ -83,6 +84,39 @@ def normalize_mfcc(mfcc):
     # Normalize MFCC features to have zero mean and unit variance
     return (mfcc - np.mean(mfcc, axis=1, keepdims=True)) / np.std(mfcc, axis=1, keepdims=True)
 
+def add_noise(audio, noise, snr_db=10):
+    """
+    Thêm tiếng ồn vào audio với mức SNR (Signal-to-Noise Ratio) cụ thể.
+    :param audio: Tín hiệu âm thanh gốc.
+    :param noise: Tín hiệu tiếng ồn.
+    :param snr_db: Tỷ lệ tín hiệu trên tiếng ồn (dB), phải nằm trong khoảng hợp lý.
+    :return: Tín hiệu âm thanh đã thêm tiếng ồn.
+    """
+    # Giới hạn snr_db
+    if snr_db > 50 or snr_db < 0:  # Giới hạn SNR hợp lý từ 0 đến 50 dB
+        raise ValueError("snr_db must be between 0 and 50 dB.")
+
+    # Điều chỉnh độ dài của noise để khớp với audio
+    if len(noise) < len(audio):
+        noise = np.tile(noise, int(np.ceil(len(audio) / len(noise))))[:len(audio)]
+    else:
+        noise = noise[:len(audio)]
+    
+    # Tính toán công suất tín hiệu
+    audio_power = np.mean(audio ** 2)
+    noise_power = np.mean(noise ** 2)
+    
+    # Tính toán tỷ lệ SNR mong muốn
+    try:
+        target_noise_power = audio_power / (10 ** (snr_db / 10))
+        noise = noise * np.sqrt(target_noise_power / noise_power)
+    except OverflowError as e:
+        raise ValueError(f"Calculation overflow: SNR value ({snr_db}) is too high.") from e
+    
+    # Hòa trộn
+    audio_noisy = audio + noise
+    return audio_noisy
+
 
 def load_data(data_dir, max_len=MAX_LEN, max_files_per_label=50):
     features, labels = [], []
@@ -90,6 +124,8 @@ def load_data(data_dir, max_len=MAX_LEN, max_files_per_label=50):
 
     if not os.path.exists(data_dir):
         raise ValueError(f"Data directory {data_dir} does not exist.")
+    
+    noise, _ = librosa.load("stuff_to_enhance_model/heavy-rain-sound-effect-238557.wav", sr=16000)
     
     for idx, folder in enumerate(os.listdir(data_dir)):
         folder_path = os.path.join(data_dir, folder)
@@ -104,17 +140,25 @@ def load_data(data_dir, max_len=MAX_LEN, max_files_per_label=50):
                     # Apply normalization and compression
                     audio = normalize_audio(audio)
                     audio = compress_audio(audio)
-
+                    noisy_audio = add_noise(audio, noise, 50)
                     # Apply augmentation
-                    audio_noisy, audio_stretched, audio_shifted = augment_audio(audio, sample_rate)
+                    audio_noisy, audio_stretched, audio_shifted = augment_audio(noisy_audio, sample_rate)
 
                     # Extract MFCCs for the original and augmented versions
-                    for augmented_audio in [audio, audio_noisy, audio_stretched, audio_shifted]:
+                    for augmented_audio in [noisy_audio, audio_noisy, audio_stretched, audio_shifted]:
                         mfcc = librosa.feature.mfcc(y=augmented_audio, sr=sample_rate, n_mfcc=N_MFCC)
                         mfcc = normalize_mfcc(mfcc)  # Normalize MFCCs
                         mfcc = pad_audio_features(mfcc, max_len)
                         features.append(mfcc.T)
                         labels.append(idx)
+                    
+                    
+                    # noisy_audio = add_noise(audio, noise, 50)
+                    
+                    # mfcc = librosa.feature.mfcc(y=audio, sr=sample_rate, n_mfcc=N_MFCC)
+                    # mfcc = pad_audio_features(mfcc, max_len)
+                    # features.append(mfcc.T)
+                    # labels.append(idx)
 
                     file_count += 1  # Increment file count for the current label
 
@@ -178,15 +222,15 @@ if __name__ == "__main__":
     num_classes = len(label_map)
 
     # Check if model exists in the specified directory
-    if os.path.exists(os.path.join(MODEL_DIRECTORY, "rnn_attention_model4.h5")):
+    if os.path.exists(os.path.join(MODEL_DIRECTORY, MODEL_NAME)):
         print("Loading existing model...")
-        model = load_model(os.path.join(MODEL_DIRECTORY, "rnn_attention_model4.h5"))
+        model = load_model(os.path.join(MODEL_DIRECTORY, MODEL_NAME))
     else:
         print("Building new model with attention and regularization...")
         model = build_model_with_attention(input_shape, num_classes)
 
     # Dynamic Learning Rate Scheduler
-    lr_schedule = get_dynamic_learning_rate_schedule(initial_lr=0.0001, total_steps=X_train.shape[0] * EPOCHS // 128)
+    lr_schedule = get_dynamic_learning_rate_schedule(initial_lr=0.0002, total_steps=X_train.shape[0] * EPOCHS // 128)
     optimizer = Adam(learning_rate=lr_schedule)
 
     model.compile(optimizer=optimizer, loss="sparse_categorical_crossentropy", metrics=["accuracy"])
@@ -211,7 +255,7 @@ if __name__ == "__main__":
 
     # Save Model and Label Map
     os.makedirs(MODEL_DIRECTORY, exist_ok=True)
-    model.save(os.path.join(MODEL_DIRECTORY, "rnn_attention_model4.h5"))
+    model.save(os.path.join(MODEL_DIRECTORY, MODEL_NAME))
     with open(os.path.join(MODEL_DIRECTORY, "label_map.txt"), "w") as f:
         for label, idx in label_map.items():
             f.write(f"{label}\t{idx}\n")
