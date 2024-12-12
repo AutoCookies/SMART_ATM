@@ -3,11 +3,11 @@ import numpy as np
 import librosa
 import tensorflow as tf
 from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import Input, LSTM, BatchNormalization, Dropout, Dense, Conv1D, GlobalAveragePooling1D
+from tensorflow.keras.layers import Input, LSTM, BatchNormalization, Dropout, Dense, Conv1D, GlobalAveragePooling1D, Add
 from tensorflow.keras.optimizers import Adam
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.callbacks import ReduceLROnPlateau, EarlyStopping
-from tensorflow.keras.regularizers import l2, l1
+from tensorflow.keras.regularizers import l2, l1, l1_l2
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
@@ -19,7 +19,7 @@ from tensorflow.keras.models import load_model
 
 # Constants
 DATA_DIR = "data\\converted_data2"  # Updated directory containing converted .wav files
-MODEL_NAME = "voice_attention.h5"
+MODEL_NAME = "voice_attention_test_reg3.h5"
 MODEL_DIRECTORY = "models\\voice_model"
 MAX_LEN = 30  # Adjusted MAX_LEN to match audio lengths
 N_MFCC = 13    # Number of MFCC features
@@ -195,6 +195,40 @@ def build_model_with_attention(input_shape, num_classes):
     model = Model(inputs=inputs, outputs=outputs)
     return model
 
+def build_model_test_with_attention(input_shape, num_classes):
+    inputs = Input(shape=input_shape)
+
+    # Conv1D Block
+    x = Conv1D(filters=64, kernel_size=3, kernel_regularizer=l2(0.001))(inputs)
+    x = LeakyReLU(alpha=0.01)(x)
+    x = BatchNormalization()(x)
+    x = Dropout(0.3)(x)
+
+    # LSTM Block with residual connection
+    x_residual = Conv1D(filters=128, kernel_size=1, padding="same")(x)  
+    x = LSTM(128, return_sequences=True, kernel_regularizer=l1_l2(l1=1e-4, l2=1e-4))(x)
+    x = BatchNormalization()(x)
+    x = Add()([x, x_residual])
+
+    # Multi-Head Self Attention Block
+    attention_output = MultiHeadAttention(num_heads=8, key_dim=64, attention_axes=[1])(x, x)
+    attention_output = LayerNormalization(epsilon=1e-6)(attention_output)
+    x = Add()([x, attention_output])
+
+    # Pre-Trained Sentence Embedding (Semantic Information)
+    semantic_output = Dense(128, activation='relu')(x)  # Tạo thêm semantic features
+    x = Add()([x, semantic_output])
+
+    # Dense Layers with Regularization
+    x = GlobalAveragePooling1D()(x)
+    x = Dense(256, kernel_regularizer=l1_l2(l1=1e-4, l2=1e-4))(x)
+    x = LeakyReLU(alpha=0.01)(x)
+    x = Dropout(0.3)(x)
+    outputs = Dense(num_classes, activation='softmax')(x)
+
+    model = Model(inputs=inputs, outputs=outputs)
+    return model
+
 # Dynamic learning rate scheduler
 def get_dynamic_learning_rate_schedule(initial_lr=0.0001, total_steps=10000):
     # Choose between ExponentialDecay or CosineDecay
@@ -227,7 +261,7 @@ if __name__ == "__main__":
         model = load_model(os.path.join(MODEL_DIRECTORY, MODEL_NAME))
     else:
         print("Building new model with attention and regularization...")
-        model = build_model_with_attention(input_shape, num_classes)
+        model = build_model_test_with_attention(input_shape, num_classes)
 
     # Dynamic Learning Rate Scheduler
     lr_schedule = get_dynamic_learning_rate_schedule(initial_lr=0.0002, total_steps=X_train.shape[0] * EPOCHS // 128)
@@ -248,7 +282,7 @@ if __name__ == "__main__":
         X_train, y_train,
         validation_data=(X_test, y_test),
         epochs=EPOCHS,
-        batch_size=64,
+        batch_size=128,
         callbacks=[early_stopping],
         shuffle=True
     )

@@ -8,6 +8,9 @@ from tensorflow.keras.preprocessing.image import img_to_array
 import os
 import time
 import pygame
+from dotenv import load_dotenv
+from pymongo import MongoClient
+from pymongo.server_api import ServerApi
 from playsound import playsound
 import sys
 import speech_recognition as sr
@@ -15,7 +18,7 @@ import librosa
 import sounddevice as sd
 import threading
 import tensorflow as tf
-
+load_dotenv()
 model_subject = load_model('models\\fingerprint_regconition\\USER.keras')
 model_finger = load_model('models\\fingerprint_regconition\\FINGER.keras')
 
@@ -23,7 +26,7 @@ face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_fronta
 model_face_recognition = load_model('models/face_regconition/my_model2.h5')
 label_encoder = np.load('models/face_regconition/label_encoder.npy', allow_pickle=True)
 
-model_voice = load_model("models\\voice_model\\voice_attention_test_reg2.h5")
+model_voice = load_model("models\\voice_model\\voice_attention_test_reg3.h5")
 voice_labels = "models\\voice_model\\label_map.txt"
 GREETING_AUDIO_PATH = "openSound.wav"
 GOOGBYE_AUDIO_PATH = "goodBye.wav"
@@ -152,10 +155,17 @@ def start_face_recognition(subject_id, root, cap):
         )
         
         if face_recognized and str(face_recognized) == str(subject_id):
-            messagebox.showinfo("Success", "WELCOME! All checks passed.")
-            root.destroy()
-            show_welcome_window(face_recognized)
-            return True
+            user_info = is_valid_user(subject_id)
+            if user_info:
+                username = user_info.get("username", "Unknown User")  # Lấy tên người dùng hoặc gán giá trị mặc định
+                messagebox.showinfo("Success", f"WELCOME {username}! All checks passed.")
+                root.destroy()
+                
+                show_welcome_window(user_info)  # Truyền username vào
+                return True
+            else:
+                messagebox.showerror("Error", "User not found in database. Access denied.")
+                return False
         else:
             attempts += 1
             messagebox.showwarning("Cảnh báo!", f"Lần thử thứ {attempts}/3 thất bại. Xin hãy thử lại.")
@@ -193,18 +203,24 @@ def predict_command(command):
     
     return predicted_class
 
-def show_account_balance_window():
+def show_account_balance_window(user_info):
     balance_window = tk.Toplevel()
     balance_window.title("Số Dư Tài Khoản")
     balance_window.geometry("1480x1200")
-    
-    balance_label = tk.Label(balance_window, text="Số dư tài khoản của bạn là:", font=("Arial", 14))
+    balance_window.configure(bg="#E7F9E5")
+
+    # Hiển thị nhãn tiêu đề
+    balance_label = tk.Label(balance_window, text="Số dư tài khoản của bạn là:", font=("Arial", 14), bg="#E7F9E5")
     balance_label.pack(pady=20)
 
-    balance = 500000
-    balance_value_label = tk.Label(balance_window, text=f"{balance} VND", font=("Arial", 16, "bold"))
+    # Lấy số dư từ `user_info`
+    balance = user_info.get("balance", 0)  # Mặc định là 0 nếu không tìm thấy
+
+    # Hiển thị giá trị số dư
+    balance_value_label = tk.Label(balance_window, text=f"{balance:,} VND", font=("Arial", 16, "bold"), bg="#E7F9E5")
     balance_value_label.pack(pady=10)
 
+    # Nút đóng cửa sổ
     close_button = tk.Button(balance_window, text="Đóng", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=20, command=balance_window.destroy)
     close_button.pack(pady=20)
 
@@ -228,11 +244,13 @@ def show_recharge_window():
     back_button = tk.Button(recharge_window, text="Quay lại", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=20, command=recharge_window.destroy)
     back_button.pack(pady=10)
 
-def show_withdrawal_window():
+def show_withdrawal_window(user_info):
     withdrawal_window = tk.Toplevel()
     withdrawal_window.title("Rút Tiền Mặt")
     withdrawal_window.geometry("1480x1200")
     withdrawal_window.configure(bg="#E7F9E5")
+    
+    balance = user_info.get("balance", 0)
 
     label = tk.Label(withdrawal_window, text="Nhập số tiền muốn rút:", font=("Arial", 14))
     label.pack(pady=20)
@@ -240,53 +258,113 @@ def show_withdrawal_window():
     amount_entry = tk.Entry(withdrawal_window, font=("Arial", 14), width=20)
     amount_entry.pack(pady=10)
 
-    confirm_button = tk.Button(withdrawal_window, text="Xác nhận", bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20)
+    balance_label = tk.Label(withdrawal_window, text=f"Số dư hiện tại: {balance}vnđ", font=("Arial", 14), bg="#E7F9E5")
+    balance_label.pack(pady=20)
+
+    def withdrawal():
+        try:
+            withdrawal_amount = int(amount_entry.get().replace("vnđ", "").strip())
+        except ValueError:
+            messagebox.showerror("Lỗi", "Số tiền nhập vào không hợp lệ. Vui lòng thử lại.")
+            return
+        
+        nonlocal balance  # Đảm bảo có thể sửa biến cục bộ bên ngoài
+        if withdrawal_amount > balance:
+            messagebox.showerror("Lỗi", "Không thể rút, số dư không đủ.")
+        else:
+            new_balance = balance - withdrawal_amount
+            user_id = user_info.get("user_id")  # Giả định user_info chứa user_id
+
+            # Cập nhật cơ sở dữ liệu
+            mongo_uri = os.getenv("MONGO_URI")
+            if not mongo_uri:
+                raise ValueError("MongoDB URI not found in .env file.")
+
+            client = MongoClient(mongo_uri, server_api=ServerApi('1'))
+            db = client['Accounts']
+            accounts_collection = db['accounts']
+
+            # Thực hiện cập nhật số dư
+            result = accounts_collection.update_one(
+                {"user_id": user_id},
+                {"$set": {"balance": new_balance}}
+            )
+
+            if result.modified_count > 0:
+                balance = new_balance  # Cập nhật biến cục bộ
+                balance_label.config(text=f"Số dư hiện tại: {balance}vnđ")  # Cập nhật giao diện
+                messagebox.showinfo("Thành công", f"Bạn đã rút {withdrawal_amount}vnđ thành công. Số dư mới: {balance}vnđ.")
+            else:
+                messagebox.showerror("Lỗi", "Không thể cập nhật số dư. Vui lòng thử lại sau.")
+
+    confirm_button = tk.Button(withdrawal_window, text="Xác nhận", bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20, command=withdrawal)
     confirm_button.pack(pady=10)
 
     cancel_button = tk.Button(withdrawal_window, text="Thoát", bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20, command=withdrawal_window.destroy)
     cancel_button.pack(pady=10)
-    
-    label.pack(pady=20)
 
-    # Function to listen to voice commands
     def listen_for_voice_commands():
-        audio = record_audio(duration=3)  # Example: 5 seconds for recording
+        audio = record_audio(duration=3)  # Ví dụ: Ghi âm 3 giây
         predicted_label = predict_audio_class(audio)
         print(f"Predicted label: {predicted_label}")
-        
-        if str(predicted_label) == "100k":
-            print("Proceeding with withdrawal of 100k")
-            # Setting the amount to 100k
-            amount_entry.delete(0, tk.END)  # Clear any existing value
-            amount_entry.insert(0, "100000vnđ")  # Set the amount to 100000
-            print(f"Withdrawal Amount: 100000vnđ")
-        elif str(predicted_label) == '200k':
-            print("Proceeding with withdrawal of 100k")
-            # Setting the amount to 100k
-            amount_entry.delete(0, tk.END)  # Clear any existing value
-            amount_entry.insert(0, "200000vnđ")  # Set the amount to 100000
-            print(f"Withdrawal Amount: 200000vnđ")
-        elif str(predicted_label) == '500k':
-            print("Proceeding with withdrawal of 100k")
-            # Setting the amount to 100k
-            amount_entry.delete(0, tk.END)  # Clear any existing value
-            amount_entry.insert(0, "500000vnđ")  # Set the amount to 100000
-            print(f"Withdrawal Amount: 500000vnđ")
-        elif predicted_label == "thoat":
-            print("Cancelling withdrawal")
-            withdrawal_window.destroy()  # Close the withdrawal window if "cancel" is recognized
-        elif predicted_label == 'xoa':
-            if len(amount_entry) != 0:
-                amount_entry.delete(0, tk.END)
-        else:
-            print("Unrecognized command")
 
-    # Button to start listening for voice commands
+        voice_to_amount = {
+            "100k": "100000vnđ",
+            "200k": "200000vnđ",
+            "500k": "500000vnđ"
+        }
+
+        if predicted_label in voice_to_amount:
+            amount_entry.delete(0, tk.END)
+            amount_entry.insert(0, voice_to_amount[predicted_label])
+        elif predicted_label == "thoat":
+            withdrawal_window.destroy()
+        elif predicted_label == "xoa":
+            amount_entry.delete(0, tk.END)
+        else:
+            print("Lệnh không nhận diện được.")
+
     listen_button = tk.Button(withdrawal_window, text="Lắng nghe lệnh", font=("Arial", 14), width=20, command=listen_for_voice_commands)
     listen_button.pack(pady=20)
 
 # Show the payment window (Thanh Toán Trực Tuyến)
-def show_payment_window():
+def show_payment_window(user_info):
+    def sort_bills(criteria):
+        if criteria == "time":
+            user_info['bills'].sort(key=lambda bill: bill['start_date'])
+        elif criteria == "amount":
+            user_info['bills'].sort(key=lambda bill: bill['total_amount'])
+        refresh_bills()
+
+    def refresh_bills():
+        for widget in bills_frame.winfo_children():
+            widget.destroy()
+
+        for bill in user_info['bills']:
+            bill_text = f"{bill["bill_type"]} | ID: {bill["bill_id"]} | " \
+                        f"Start: {bill["start_date"]} | Deadline: {bill["deadline"]} | Amount: {bill["total_amount"]}"
+            bill_label = tk.Label(bills_frame, text=bill_text, font=("Arial", 12), bg="#F0FFF0")
+            bill_label.pack(fill=tk.X, padx=10, pady=5)
+
+            
+    def pay_credit():
+        total_amount = sum(bill['total_amount'] for bill in user_info['bills'] if not bill['is_paid'])
+        balance = user_info.balance
+
+        if balance >= total_amount:
+            user_info.balance -= total_amount
+
+            for bill in user_info.get_unpaid_bills():
+                bill.is_paid = True
+                bill.paid_amount = bill.total_amount
+
+            messagebox.showinfo("Thanh toán thành công", f"Đã thanh toán tổng số tiền {total_amount}.\nSố dư còn lại: {user_info.balance}")
+
+            refresh_bills()
+
+        else:
+            messagebox.showerror("Thanh toán thất bại", f"Số dư không đủ. Cần {total_amount}, nhưng chỉ còn {balance}")
+
     payment_window = tk.Toplevel()
     payment_window.title("Thanh Toán Trực Tuyến")
     payment_window.geometry("1480x1200")
@@ -295,23 +373,44 @@ def show_payment_window():
     label = tk.Label(payment_window, text="Chọn phương thức thanh toán:", font=("Arial", 14))
     label.pack(pady=20)
 
-    credit_button = tk.Button(payment_window, text="Thanh toán qua thẻ tín dụng", bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20)
+    # Buttons for payment methods
+    credit_button = tk.Button(payment_window, text="Thanh toán qua thẻ tín dụng", bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20, command=pay_credit)
     credit_button.pack(pady=10)
-    
+
     wallet_button = tk.Button(payment_window, text="Thanh toán qua ví điện tử", bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20)
     wallet_button.pack(pady=10)
-    
+
     transfer_button = tk.Button(payment_window, text="Thanh toán qua chuyển khoản ngân hàng", bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20)
     transfer_button.pack(pady=10)
-    
+
     back_button = tk.Button(payment_window, text="Quay lại", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=20, command=payment_window.destroy)
     back_button.pack(pady=10)
 
-def show_welcome_window(recognized_name):
+    # Frame to display bills
+    bills_label = tk.Label(payment_window, text="Danh sách hóa đơn:", font=("Arial", 16), bg="#E7F9E5")
+    bills_label.pack(pady=10)
+
+    sort_frame = tk.Frame(payment_window)
+    sort_frame.pack(fill=tk.X)
+
+    tk.Label(sort_frame, text="Sắp xếp theo:", font=("Arial", 12)).pack(side=tk.LEFT, padx=10)
+    btn_sort_time = tk.Button(sort_frame, text="Thời gian", font=("Arial", 12), command=lambda: sort_bills("time"))
+    btn_sort_time.pack(side=tk.LEFT, padx=5)
+    btn_sort_amount = tk.Button(sort_frame, text="Số tiền", font=("Arial", 12), command=lambda: sort_bills("amount"))
+    btn_sort_amount.pack(side=tk.LEFT, padx=5)
+
+    bills_frame = tk.Frame(payment_window)
+    bills_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+
+    refresh_bills()
+
+def show_welcome_window(user_info):
     welcome_window = tk.Toplevel()
     welcome_window.title("Welcome")
     welcome_window.geometry("1480x1200")
     welcome_window.configure(bg="#E7F9E5")
+    
+
     
     canvas_frame = tk.Frame(welcome_window, bg="#E7F9E5")
     canvas_frame.pack(expand=True, pady=20)
@@ -328,10 +427,12 @@ def show_welcome_window(recognized_name):
         10, 10, 580, 90,
         fill="#E7F9E5", outline="#2D6A4F", width=3
     )
-
+    
+    username = user_info.get("username", "Unknown User")
+    
     message_label = tk.Label(
         canvas_frame,
-        text=f"Chào {recognized_name}, vui lòng chọn giao dịch!",
+        text=f"Chào {username}, vui lòng chọn giao dịch!",
         font=("Arial", 20, "bold"),
         fg="#2D6A4F",
         bg="#E7F9E5"
@@ -345,13 +446,13 @@ def show_welcome_window(recognized_name):
     left_frame = tk.Frame(button_frame, bg="#E7F9E5")
     left_frame.pack(side=tk.LEFT, padx=50)
 
-    withdraw_button = tk.Button(left_frame, text="Rút tiền mặt", font=("Arial", 14), width=35, bg="#95D5B2", fg="#1B4332", command=show_withdrawal_window)
+    withdraw_button = tk.Button(left_frame, text="Rút tiền mặt", font=("Arial", 14), width=35, bg="#95D5B2", fg="#1B4332", command=lambda:show_withdrawal_window(user_info))
     withdraw_button.pack(pady=10)
     check_info_button = tk.Button(left_frame, text="Tra cứu thông tin", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35)
     check_info_button.pack(pady=10)
     deposit_button = tk.Button(left_frame, text="Nộp tiền mặt", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35)
     deposit_button.pack(pady=10)
-    balance_button = tk.Button(left_frame, text="Số dư tài khoản", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35, command=show_account_balance_window)
+    balance_button = tk.Button(left_frame, text="Số dư tài khoản", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35, command=lambda:show_account_balance_window(user_info))
     balance_button.pack(pady = 10)
 
     right_frame = tk.Frame(button_frame, bg="#E7F9E5")
@@ -359,9 +460,9 @@ def show_welcome_window(recognized_name):
 
     transfer_button = tk.Button(right_frame, text="Chuyển tiền", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35)
     transfer_button.pack(pady=10)
-    recharge_button = tk.Button(right_frame, text="Nạp tiền ĐTDĐ", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35)
+    recharge_button = tk.Button(right_frame, text="Nạp tiền ĐTDĐ", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35, command=show_recharge_window)
     recharge_button.pack(pady=10)
-    bill_payment_button = tk.Button(right_frame, text="Thanh toán hóa đơn", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35, command=show_payment_window)
+    bill_payment_button = tk.Button(right_frame, text="Thanh toán hóa đơn", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35, command=lambda:show_payment_window(user_info))
     bill_payment_button.pack(pady=10)
     exit_button = tk.Button(right_frame, text="Thoát", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35, command=sys.exit)
     exit_button.pack(pady=10)
@@ -373,10 +474,10 @@ def show_welcome_window(recognized_name):
         
         if str(predicted_label) == "rut_tien":
             print("CHÀO MỪNG BẠN ĐẾN VỚI GIAO DIỆN RÚT TIỀN")
-            show_withdrawal_window()
+            show_withdrawal_window(user_info)
         elif str(predicted_label) == "so_du":
             print("CHÀO MỪNG BẠN ĐẾN VỚI GIAO DIỆN SỐ DƯ")
-            show_account_balance_window()
+            show_account_balance_window(user_info)
         elif str(predicted_label) == 'nap_tien':
             print("CHÀO MỪNG BẠN ĐẾN VỚI GIAO DIỆN NẠP TIỀN")
             show_recharge_window()
@@ -390,6 +491,24 @@ def show_welcome_window(recognized_name):
 
     listen_for_voice_commands_button = tk.Button(welcome_window, text="Start Listening for Commands", font=("Arial", 14), command=listen_for_voice_commands)
     listen_for_voice_commands_button.pack(pady=20)
+
+def is_valid_user(subject_id):
+    """
+    Kiểm tra xem subject_id có tồn tại trong cơ sở dữ liệu hay không.
+    Trả về thông tin người dùng nếu tồn tại, ngược lại trả về None.
+    """
+    mongo_uri = os.getenv("MONGO_URI")
+    if not mongo_uri:
+        raise ValueError("MongoDB URI not found in .env file.")
+
+    client = MongoClient(mongo_uri, server_api=ServerApi('1'))
+    db = client['Accounts']
+    accounts_collection = db['accounts']
+
+    # Lấy thông tin người dùng từ cơ sở dữ liệu
+    user = accounts_collection.find_one({"user_id": int(subject_id)})
+    return user  # Trả về thông tin người dùng hoặc None nếu không tồn tại
+
 
 def fingerprint_upload_window(cap):
     finger_print_window = tk.Toplevel()
@@ -422,11 +541,15 @@ def fingerprint_upload_window(cap):
 
     def process_fingerprint(file_path, cap):
         subject_id, finger_num = predict_fingerprint(file_path)
-        messagebox.showinfo("Fingerprint Prediction", f"Subject ID: {subject_id}, Finger Type: {finger_num}")
-        prediction_label.config(text=f"Subject ID: {subject_id}, Finger Type: {finger_num}")
-        if start_face_recognition(subject_id, root, cap):
-            root.destroy()
-            show_welcome_window(str(subject_id))
+        if is_valid_user(subject_id):
+            messagebox.showinfo("Fingerprint Prediction", f"Subject ID: {subject_id}, Finger Type: {finger_num}")
+            prediction_label.config(text=f"Subject ID: {subject_id}, Finger Type: {finger_num}")
+            if start_face_recognition(subject_id, root, cap):
+                root.destroy()
+                show_welcome_window(str(subject_id))
+        else:
+            messagebox.showerror("Error", "Subject ID not found in database.")
+
 
     upload_button = tk.Button(finger_print_window, text="Upload Fingerprint", font=("Arial", 14), command=upload_fingerprint)
     upload_button.pack(pady=10)

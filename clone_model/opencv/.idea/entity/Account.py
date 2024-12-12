@@ -1,31 +1,25 @@
+import User
+
 class Account(User):
-    def __init__(self, user_id, username, fingerprints, face_image, balance=0.0, debt=0.0):
+    def __init__(self, user_id, username, fingerprints, face_image, accountNumber, balance=0.0, debt=0.0, bills=None):
+        """
+        Khởi tạo tài khoản.
+        :param user_id: ID người dùng.
+        :param username: Tên người dùng.
+        :param fingerprints: Dấu vân tay.
+        :param face_image: Ảnh khuôn mặt.
+        :param accountNumber: Số tài khoản 12 chữ số.
+        :param balance: Số dư tài khoản.
+        :param debt: Nợ hiện tại.
+        :param bills: Danh sách các hóa đơn.
+        """
         super().__init__(user_id, username, fingerprints, face_image)
+        self.accountNumber = accountNumber
         self.balance = balance
         self.debt = debt
-
-    def deposit(self, amount):
-        if amount <= 0:
-            raise ValueError("Số tiền nạp phải lớn hơn 0.")
-        self.balance += amount
-        print(f"Nạp thành công {amount}. Số dư hiện tại: {self.balance}")
-
-    def withdraw(self, amount):
-        if amount <= 0:
-            raise ValueError("Số tiền rút phải lớn hơn 0.")
-        if amount > self.balance:
-            raise ValueError("Không đủ số dư trong tài khoản.")
-        self.balance -= amount
-        print(f"Rút thành công {amount}. Số dư còn lại: {self.balance}")
-
-    def repay_debt(self, amount):
-        if amount <= 0:
-            raise ValueError("Số tiền thanh toán phải lớn hơn 0.")
-        if amount > self.debt:
-            raise ValueError("Số tiền thanh toán vượt quá số nợ.")
-        self.debt -= amount
-        print(f"Thanh toán thành công {amount}. Nợ còn lại: {self.debt}")
+        self.bills = bills if bills is not None else []
 
     def __str__(self):
         user_info = super().__str__()
-        return f"{user_info}, Balance: {self.balance}, Debt: {self.debt}"
+        bills_info = "\n".join([str(bill) for bill in self.bills])
+        return f"{user_info}, Balance: {self.balance}, Debt: {self.debt}\nBills:\n{bills_info}"
