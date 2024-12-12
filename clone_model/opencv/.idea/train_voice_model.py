@@ -19,7 +19,7 @@ from tensorflow.keras.models import load_model
 
 # Constants
 DATA_DIR = "data\\converted_data2"  # Updated directory containing converted .wav files
-MODEL_NAME = "voice_attention_reg.h5"
+MODEL_NAME = "voice_attention.h5"
 MODEL_DIRECTORY = "models\\voice_model"
 MAX_LEN = 30  # Adjusted MAX_LEN to match audio lengths
 N_MFCC = 13    # Number of MFCC features
@@ -140,12 +140,12 @@ def load_data(data_dir, max_len=MAX_LEN, max_files_per_label=50):
                     # Apply normalization and compression
                     audio = normalize_audio(audio)
                     audio = compress_audio(audio)
-                    noisy_audio = add_noise(audio, noise, 50)
+                    # noisy_audio = add_noise(audio, noise, 50)
                     # Apply augmentation
-                    audio_noisy, audio_stretched, audio_shifted = augment_audio(noisy_audio, sample_rate)
+                    audio_noisy, audio_stretched, audio_shifted = augment_audio(audio, sample_rate)
 
                     # Extract MFCCs for the original and augmented versions
-                    for augmented_audio in [noisy_audio, audio_noisy, audio_stretched, audio_shifted]:
+                    for augmented_audio in [audio, audio_noisy, audio_stretched, audio_shifted]:
                         mfcc = librosa.feature.mfcc(y=augmented_audio, sr=sample_rate, n_mfcc=N_MFCC)
                         mfcc = normalize_mfcc(mfcc)  # Normalize MFCCs
                         mfcc = pad_audio_features(mfcc, max_len)
