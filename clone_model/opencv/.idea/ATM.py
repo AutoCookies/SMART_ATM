@@ -26,7 +26,7 @@ face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_fronta
 model_face_recognition = load_model('models/face_regconition/my_model2.h5')
 label_encoder = np.load('models/face_regconition/label_encoder.npy', allow_pickle=True)
 
-model_voice = load_model("models\\voice_model\\voice_attention_test_reg3.h5")
+model_voice = load_model("models\\voice_model\\voice_attention_test_reg_4.h5")
 voice_labels = "models\\voice_model\\label_map.txt"
 GREETING_AUDIO_PATH = "openSound.wav"
 GOOGBYE_AUDIO_PATH = "goodBye.wav"
@@ -204,6 +204,25 @@ def predict_command(command):
     return predicted_class
 
 def show_account_balance_window(user_info):
+    def get_balance_from_db(user_id):
+        """
+        Lấy số dư từ cơ sở dữ liệu MongoDB dựa trên user_id.
+        """
+        # Kết nối đến MongoDB
+        mongo_uri = os.getenv("MONGO_URI")
+        if not mongo_uri:
+            raise ValueError("MongoDB URI not found in .env file.")
+
+        client = MongoClient(mongo_uri)
+        db = client['Accounts']
+        accounts_collection = db['accounts']
+
+        # Truy vấn thông tin tài khoản
+        user_data = accounts_collection.find_one({"user_id": user_id})
+        if user_data and "balance" in user_data:
+            return user_data["balance"]
+        return 0  # Trả về 0 nếu không tìm thấy user hoặc không có thông tin số dư
+
     balance_window = tk.Toplevel()
     balance_window.title("Số Dư Tài Khoản")
     balance_window.geometry("1480x1200")
@@ -213,9 +232,15 @@ def show_account_balance_window(user_info):
     balance_label = tk.Label(balance_window, text="Số dư tài khoản của bạn là:", font=("Arial", 14), bg="#E7F9E5")
     balance_label.pack(pady=20)
 
-    # Lấy số dư từ `user_info`
-    balance = user_info.get("balance", 0)  # Mặc định là 0 nếu không tìm thấy
+    mongo_uri = os.getenv("MONGO_URI")
 
+    client = MongoClient(mongo_uri)
+    db = client['Accounts']
+    accounts_collection = db['accounts']
+    user_data = accounts_collection.find_one({"user_id": user_info["user_id"]})
+
+    balance = user_data['balance']
+    
     # Hiển thị giá trị số dư
     balance_value_label = tk.Label(balance_window, text=f"{balance:,} VND", font=("Arial", 16, "bold"), bg="#E7F9E5")
     balance_value_label.pack(pady=10)
@@ -317,17 +342,18 @@ def show_withdrawal_window(user_info):
         if predicted_label in voice_to_amount:
             amount_entry.delete(0, tk.END)
             amount_entry.insert(0, voice_to_amount[predicted_label])
-        elif predicted_label == "thoat":
+        elif predicted_label == "tro_lai":
             withdrawal_window.destroy()
         elif predicted_label == "xoa":
             amount_entry.delete(0, tk.END)
+        elif predicted_label == "xac_nhan":
+            withdrawal()
         else:
             print("Lệnh không nhận diện được.")
 
     listen_button = tk.Button(withdrawal_window, text="Lắng nghe lệnh", font=("Arial", 14), width=20, command=listen_for_voice_commands)
     listen_button.pack(pady=20)
 
-# Show the payment window (Thanh Toán Trực Tuyến)
 def show_payment_window(user_info):
     def sort_bills(criteria):
         if criteria == "time":
@@ -341,30 +367,51 @@ def show_payment_window(user_info):
             widget.destroy()
 
         for bill in user_info['bills']:
-            bill_text = f"{bill["bill_type"]} | ID: {bill["bill_id"]} | " \
-                        f"Start: {bill["start_date"]} | Deadline: {bill["deadline"]} | Amount: {bill["total_amount"]}"
+            bill_text = f"{bill['bill_type']} | ID: {bill['bill_id']} | " \
+                         f"Start: {bill['start_date']} | Deadline: {bill['deadline']} | Amount: {bill['total_amount']}"
+            
+            # Tạo label để hiển thị thông tin bill
             bill_label = tk.Label(bills_frame, text=bill_text, font=("Arial", 12), bg="#F0FFF0")
             bill_label.pack(fill=tk.X, padx=10, pady=5)
 
-            
     def pay_credit():
         total_amount = sum(bill['total_amount'] for bill in user_info['bills'] if not bill['is_paid'])
-        balance = user_info.balance
+        balance = user_info['balance']
+
+        mongo_uri = os.getenv("MONGO_URI")
+        if not mongo_uri:
+            raise ValueError("MongoDB URI not found in .env file.")
+
+        client = MongoClient(mongo_uri, server_api=ServerApi('1'))
+        db = client['Accounts']
+        accounts_collection = db['accounts']
 
         if balance >= total_amount:
-            user_info.balance -= total_amount
+            user_info['balance'] -= total_amount
 
-            for bill in user_info.get_unpaid_bills():
-                bill.is_paid = True
-                bill.paid_amount = bill.total_amount
+            # Cập nhật các hóa đơn là đã thanh toán
+            for bill in user_info['bills']:
+                if not bill['is_paid']:
+                    bill['is_paid'] = True
+                    bill['paid_amount'] = bill['total_amount']
 
-            messagebox.showinfo("Thanh toán thành công", f"Đã thanh toán tổng số tiền {total_amount}.\nSố dư còn lại: {user_info.balance}")
+            # Cập nhật số dư trong MongoDB
+            result = accounts_collection.update_one(
+                {"user_id": user_info['user_id']},
+                {"$set": {"balance": user_info['balance']}}
+            )
+
+            if result.modified_count > 0:
+                messagebox.showinfo("Thanh toán thành công", f"Đã thanh toán {total_amount} vnđ.\nSố dư còn lại: {user_info.balance} vnđ.")
+            else:
+                messagebox.showerror("Lỗi", "Không thể cập nhật số dư. Vui lòng thử lại sau.")
 
             refresh_bills()
 
         else:
-            messagebox.showerror("Thanh toán thất bại", f"Số dư không đủ. Cần {total_amount}, nhưng chỉ còn {balance}")
+            messagebox.showerror("Thanh toán thất bại", f"Số dư không đủ. Cần {total_amount}, nhưng chỉ còn {balance}.")
 
+    # Tạo cửa sổ thanh toán
     payment_window = tk.Toplevel()
     payment_window.title("Thanh Toán Trực Tuyến")
     payment_window.geometry("1480x1200")
@@ -373,20 +420,24 @@ def show_payment_window(user_info):
     label = tk.Label(payment_window, text="Chọn phương thức thanh toán:", font=("Arial", 14))
     label.pack(pady=20)
 
-    # Buttons for payment methods
-    credit_button = tk.Button(payment_window, text="Thanh toán qua thẻ tín dụng", bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20, command=pay_credit)
+    # Buttons cho các phương thức thanh toán
+    credit_button = tk.Button(payment_window, text="Thanh toán qua thẻ tín dụng", 
+                              bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20, command=pay_credit)
     credit_button.pack(pady=10)
 
-    wallet_button = tk.Button(payment_window, text="Thanh toán qua ví điện tử", bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20)
+    wallet_button = tk.Button(payment_window, text="Thanh toán qua ví điện tử", 
+                              bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20)
     wallet_button.pack(pady=10)
 
-    transfer_button = tk.Button(payment_window, text="Thanh toán qua chuyển khoản ngân hàng", bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20)
+    transfer_button = tk.Button(payment_window, text="Thanh toán qua ngân hàng", 
+                                bg="#95D5B2", fg="#1B4332", font=("Arial", 14), width=20)
     transfer_button.pack(pady=10)
 
-    back_button = tk.Button(payment_window, text="Quay lại", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=20, command=payment_window.destroy)
+    back_button = tk.Button(payment_window, text="Quay lại", font=("Arial", 14),
+                             bg="#95D5B2", fg="#1B4332", width=20, command=payment_window.destroy)
     back_button.pack(pady=10)
 
-    # Frame to display bills
+    # Hiển thị danh sách hóa đơn
     bills_label = tk.Label(payment_window, text="Danh sách hóa đơn:", font=("Arial", 16), bg="#E7F9E5")
     bills_label.pack(pady=10)
 
@@ -483,7 +534,7 @@ def show_welcome_window(user_info):
             show_recharge_window()
         elif str(predicted_label) == 'thanh_toan':
             print("CHÀO MỪNG BẠN ĐẾN VỚI GIAO DIỆN THANH TOÁN TRỰC TUYẾN")
-            show_payment_window()
+            show_payment_window(user_info)
         elif str(predicted_label) == 'thoat':
             welcome_window.destroy()
         else:

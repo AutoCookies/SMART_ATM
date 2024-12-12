@@ -19,7 +19,7 @@ from tensorflow.keras.models import load_model
 
 # Constants
 DATA_DIR = "data\\converted_data2"  # Updated directory containing converted .wav files
-MODEL_NAME = "voice_attention_test_reg3.h5"
+MODEL_NAME = "voice_attention_test_reg_4.h5"
 MODEL_DIRECTORY = "models\\voice_model"
 MAX_LEN = 30  # Adjusted MAX_LEN to match audio lengths
 N_MFCC = 13    # Number of MFCC features
@@ -125,7 +125,7 @@ def load_data(data_dir, max_len=MAX_LEN, max_files_per_label=50):
     if not os.path.exists(data_dir):
         raise ValueError(f"Data directory {data_dir} does not exist.")
     
-    noise, _ = librosa.load("stuff_to_enhance_model/heavy-rain-sound-effect-238557.wav", sr=16000)
+    noise, _ = librosa.load("stuff_to_enhance_model/traffic-32180.wav", sr=16000)
     
     for idx, folder in enumerate(os.listdir(data_dir)):
         folder_path = os.path.join(data_dir, folder)
@@ -140,12 +140,12 @@ def load_data(data_dir, max_len=MAX_LEN, max_files_per_label=50):
                     # Apply normalization and compression
                     audio = normalize_audio(audio)
                     audio = compress_audio(audio)
-                    # noisy_audio = add_noise(audio, noise, 50)
+                    noisy_audio = add_noise(audio, noise, 50)
                     # Apply augmentation
-                    audio_noisy, audio_stretched, audio_shifted = augment_audio(audio, sample_rate)
+                    audio_noisy, audio_stretched, audio_shifted = augment_audio(noisy_audio, sample_rate)
 
                     # Extract MFCCs for the original and augmented versions
-                    for augmented_audio in [audio, audio_noisy, audio_stretched, audio_shifted]:
+                    for augmented_audio in [noisy_audio, audio_noisy, audio_stretched, audio_shifted]:
                         mfcc = librosa.feature.mfcc(y=augmented_audio, sr=sample_rate, n_mfcc=N_MFCC)
                         mfcc = normalize_mfcc(mfcc)  # Normalize MFCCs
                         mfcc = pad_audio_features(mfcc, max_len)
@@ -264,7 +264,7 @@ if __name__ == "__main__":
         model = build_model_test_with_attention(input_shape, num_classes)
 
     # Dynamic Learning Rate Scheduler
-    lr_schedule = get_dynamic_learning_rate_schedule(initial_lr=0.0002, total_steps=X_train.shape[0] * EPOCHS // 128)
+    lr_schedule = get_dynamic_learning_rate_schedule(initial_lr=0.0001, total_steps=X_train.shape[0] * EPOCHS // 128)
     optimizer = Adam(learning_rate=lr_schedule)
 
     model.compile(optimizer=optimizer, loss="sparse_categorical_crossentropy", metrics=["accuracy"])
