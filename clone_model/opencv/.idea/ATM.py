@@ -18,6 +18,10 @@ import librosa
 import sounddevice as sd
 import threading
 import tensorflow as tf
+from datetime import datetime
+from PIL import Image, ImageDraw, ImageFont
+
+
 load_dotenv()
 model_subject = load_model('models\\fingerprint_regconition\\USER.keras')
 model_finger = load_model('models\\fingerprint_regconition\\FINGER.keras')
@@ -246,8 +250,19 @@ def show_account_balance_window(user_info):
     balance_value_label.pack(pady=10)
 
     # Nút đóng cửa sổ
-    close_button = tk.Button(balance_window, text="Đóng", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=20, command=balance_window.destroy)
+    close_button = tk.Button(balance_window, text="Trở lại", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=20, command=balance_window.destroy)
     close_button.pack(pady=20)
+    
+    def listen_for_voice_commands():
+        audio = record_audio(duration=3)  # Ví dụ: Ghi âm 3 giây
+        predicted_label = predict_audio_class(audio)
+        print(f"Predicted label: {predicted_label}")
+
+        if predicted_label == "tro_lai":
+            show_account_balance_window.destroy()
+
+    listen_button = tk.Button(balance_window, text="Lắng nghe lệnh", font=("Arial", 14), width=20, command=listen_for_voice_commands)
+    listen_button.pack(pady=20)
 
 def show_recharge_window():
     recharge_window = tk.Toplevel()
@@ -402,14 +417,24 @@ def show_payment_window(user_info):
             )
 
             if result.modified_count > 0:
-                messagebox.showinfo("Thanh toán thành công", f"Đã thanh toán {total_amount} vnđ.\nSố dư còn lại: {user_info.balance} vnđ.")
+                messagebox.showinfo("Thanh toán thành công", f"Đã thanh toán {total_amount} vnđ.\nSố dư còn lại: {user_info['balance']} vnđ.")
             else:
                 messagebox.showerror("Lỗi", "Không thể cập nhật số dư. Vui lòng thử lại sau.")
 
             refresh_bills()
 
         else:
-            messagebox.showerror("Thanh toán thất bại", f"Số dư không đủ. Cần {total_amount}, nhưng chỉ còn {balance}.")
+            messagebox.showerror("Thanh toán thất bại", f"Số dư không đủ. Cần {total_amount}, nhưng chỉ còn {user_info['balance']}.")
+
+    def listen_for_voice_commands():
+        audio = record_audio(duration=3)  # Ví dụ: Ghi âm 3 giây
+        predicted_label = predict_audio_class(audio)
+        print(f"Predicted label: {predicted_label}")
+
+        if predicted_label == "tro_lai":
+            show_payment_window.destroy()
+        else:
+            print("Lệnh không nhận diện được.")
 
     # Tạo cửa sổ thanh toán
     payment_window = tk.Toplevel()
@@ -435,8 +460,12 @@ def show_payment_window(user_info):
 
     back_button = tk.Button(payment_window, text="Quay lại", font=("Arial", 14),
                              bg="#95D5B2", fg="#1B4332", width=20, command=payment_window.destroy)
+    
     back_button.pack(pady=10)
 
+    listen_button = tk.Button(payment_window, text="Lắng nghe lệnh", font=("Arial", 14), width=20, command=listen_for_voice_commands)
+    listen_button.pack(pady=20)
+    
     # Hiển thị danh sách hóa đơn
     bills_label = tk.Label(payment_window, text="Danh sách hóa đơn:", font=("Arial", 16), bg="#E7F9E5")
     bills_label.pack(pady=10)
@@ -454,15 +483,187 @@ def show_payment_window(user_info):
     bills_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
 
     refresh_bills()
+    
+def show_transfer_window(user_info):
+    transfer_window = tk.Toplevel()
+    transfer_window.title("Chuyển tiền")
+    transfer_window.geometry("800x600")
+    transfer_window.configure(bg="#E7F9E5")
 
+    # Tiêu đề
+    title_label = tk.Label(transfer_window, text="Chuyển Tiền", font=("Arial", 20, "bold"), bg="#E7F9E5", fg="#2D6A4F")
+    title_label.pack(pady=20)
+
+    # Frame chứa các mục nhập
+    form_frame = tk.Frame(transfer_window, bg="#E7F9E5")
+    form_frame.pack(pady=20, padx=20)
+
+    # Nhập số tài khoản người nhận
+    recipient_label = tk.Label(form_frame, text="Số tài khoản người nhận:", font=("Arial", 14), bg="#E7F9E5", fg="#2D6A4F")
+    recipient_label.grid(row=0, column=0, padx=10, pady=10, sticky="w")
+    recipient_entry = tk.Entry(form_frame, font=("Arial", 14), width=30)
+    recipient_entry.grid(row=0, column=1, padx=10, pady=10)
+
+    # Nhập số tiền
+    amount_label = tk.Label(form_frame, text="Số tiền chuyển (VND):", font=("Arial", 14), bg="#E7F9E5", fg="#2D6A4F")
+    amount_label.grid(row=1, column=0, padx=10, pady=10, sticky="w")
+    amount_entry = tk.Entry(form_frame, font=("Arial", 14), width=30)
+    amount_entry.grid(row=1, column=1, padx=10, pady=10)
+
+    # Nhập nội dung chuyển tiền
+    note_label = tk.Label(form_frame, text="Nội dung chuyển tiền:", font=("Arial", 14), bg="#E7F9E5", fg="#2D6A4F")
+    note_label.grid(row=2, column=0, padx=10, pady=10, sticky="w")
+    note_entry = tk.Entry(form_frame, font=("Arial", 14), width=30)
+    note_entry.grid(row=2, column=1, padx=10, pady=10)
+
+    def confirm_transfer():
+        recipient_account = recipient_entry.get()
+        amount = amount_entry.get()
+        note = note_entry.get()
+
+        # Kết nối MongoDB
+        mongo_uri = os.getenv("MONGO_URI")
+        if not mongo_uri:
+            raise ValueError("MongoDB URI not found in .env file.")
+
+        client = MongoClient(mongo_uri)
+        db = client['Accounts']
+        accounts_collection = db['accounts']
+
+        sender_account = accounts_collection.find_one({"user_id": user_info['user_id']})
+
+        if not sender_account:
+            tk.messagebox.showerror("Lỗi", "Không tìm thấy tài khoản của bạn.")
+            return
+
+        if not recipient_account or not amount:
+            tk.messagebox.showerror("Lỗi", "Vui lòng nhập đầy đủ thông tin.")
+            return
+
+        try:
+            amount = float(amount)
+            if amount <= 0:
+                raise ValueError("Số tiền phải lớn hơn 0.")
+            if amount > sender_account['balance']:
+                raise ValueError("Số dư không đủ.")
+        except ValueError as e:
+            tk.messagebox.showerror("Lỗi", str(e))
+            return
+
+        recipient_data = accounts_collection.find_one({"account_number": recipient_account})
+        if not recipient_data:
+            tk.messagebox.showerror("Lỗi", "Tài khoản người nhận không tồn tại.")
+            return
+
+        try:
+            
+            
+            # Ghi log giao dịch riêng biệt cho người gửi
+            sent_data = {
+                "sender_account": sender_account['account_number'],
+                "recipient_account": recipient_account,
+                "amount": amount,
+                "note": note,
+                "timestamp": datetime.now()
+            }
+            
+            # Ghi log giao dịch riêng biệt cho người nhận
+            received_data = {
+                "recipient_account": recipient_account,
+                "sender_account": sender_account['account_number'],
+                "amount": amount,
+                "note": note,
+                "timestamp": datetime.now()
+            }
+            
+            # Cập nhật số dư cho tài khoản gửi
+            accounts_collection.update_one(
+                {"user_id": user_info['user_id']},
+                {"$inc": {"balance": -amount}},
+                {"transaction_logs": {"$push": sent_data}}
+            )
+            # Cập nhật số dư cho tài khoản người nhận
+            accounts_collection.update_one(
+                {"account_number": recipient_account},
+                {"$inc": {"balance": amount}},
+                {"transaction_logs": {"$push": received_data}}
+            )
+
+            tk.messagebox.showinfo(
+                "Thành công",
+                f"Chuyển {amount:,.0f} VND đến tài khoản {recipient_account} thành công!\nNội dung: {note}"
+            )
+
+            # Tạo hóa đơn hình ảnh
+            create_receipt_image(recipient_account, amount, note)
+
+            if tk.messagebox.askyesno("Lưu Hóa Đơn", "Bạn có muốn lưu hóa đơn không?"):
+                filepath = filedialog.asksaveasfilename(defaultextension=".jpg",
+                                                        filetypes=[("JPEG files", "*.jpg")])
+                if filepath:
+                    image = Image.open('receipt_temp.jpg')
+                    image.save(filepath)
+                    tk.messagebox.showinfo("Đã lưu", f"Hóa đơn đã được lưu tại {filepath}")
+
+            transfer_window.destroy()
+
+        except Exception as e:
+            tk.messagebox.showerror("Lỗi", f"Đã xảy ra lỗi trong giao dịch: {str(e)}")
+            
+    def listen_for_voice_commands():
+        audio = record_audio(duration=AUDIO_DURATION)
+        predicted_label = predict_audio_class(audio)
+        print(f"Predicted label: {predicted_label}")
+        
+        if str(predicted_label) == 'tro_lai':
+            transfer_window.destroy()
+        elif str(predicted_label) == 'xac_nhan':
+            confirm_transfer()
+        elif str(predicted_label) == 'xoa':
+            amount_entry.delete(0, tk.END)
+            note_entry.delete(0, tk.END)
+        elif str(predicted_label) == '100k':
+            amount_entry.insert(100000, tk.END)
+        elif str(predicted_label) == '200k':
+            amount_entry.insert(200000, tk.END)
+        elif str(predicted_label) == '500k':
+            amount_entry.insert(500000, tk.END)
+        else:
+            print('CÁC LỆNH KHÁC')
+
+    def create_receipt_image(recipient, amount, note):
+        width, height = 400, 300
+        image = Image.new("RGB", (width, height), color=(255, 255, 255))
+
+        draw = ImageDraw.Draw(image)
+        font = ImageFont.load_default()
+
+        y_position = 20
+        draw.text((20, y_position), f"Số tài khoản: {recipient}", fill=(0, 0, 0), font=font)
+        y_position += 30
+        draw.text((20, y_position), f"Số tiền: {amount} VND", fill=(0, 0, 0), font=font)
+        y_position += 30
+        draw.text((20, y_position), f"Nội dung: {note}", fill=(0, 0, 0), font=font)
+
+        # Lưu hình ảnh tạm thời
+        image.save("receipt_temp.jpg")
+
+    confirm_button = tk.Button(transfer_window, text="Xác nhận", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", command=confirm_transfer)
+    confirm_button.pack(pady=20)
+
+    # Nút quay lại
+    back_button = tk.Button(transfer_window, text="Quay lại", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", command=transfer_window.destroy)
+    back_button.pack(pady=10)
+    
+    listen_for_voice_commands_button = tk.Button(transfer_window, text="Start Listening for Commands", font=("Arial", 14), command=listen_for_voice_commands)
+    listen_for_voice_commands_button.pack(pady=20)
+    
 def show_welcome_window(user_info):
     welcome_window = tk.Toplevel()
     welcome_window.title("Welcome")
     welcome_window.geometry("1480x1200")
     welcome_window.configure(bg="#E7F9E5")
-    
-
-    
+        
     canvas_frame = tk.Frame(welcome_window, bg="#E7F9E5")
     canvas_frame.pack(expand=True, pady=20)
 
@@ -509,7 +710,7 @@ def show_welcome_window(user_info):
     right_frame = tk.Frame(button_frame, bg="#E7F9E5")
     right_frame.pack(side=tk.RIGHT, padx=50)
 
-    transfer_button = tk.Button(right_frame, text="Chuyển tiền", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35)
+    transfer_button = tk.Button(right_frame, text="Chuyển tiền", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35, command= lambda: show_transfer_window(user_info))
     transfer_button.pack(pady=10)
     recharge_button = tk.Button(right_frame, text="Nạp tiền ĐTDĐ", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=35, command=show_recharge_window)
     recharge_button.pack(pady=10)
@@ -535,6 +736,9 @@ def show_welcome_window(user_info):
         elif str(predicted_label) == 'thanh_toan':
             print("CHÀO MỪNG BẠN ĐẾN VỚI GIAO DIỆN THANH TOÁN TRỰC TUYẾN")
             show_payment_window(user_info)
+        elif str(predicted_label) == 'chuyen_tien':
+            print("CHÀO MỪNG BẠN ĐẾN VỚI GIAO DIỆN CHUYEN TIỀN")
+            show_transfer_window(user_info)
         elif str(predicted_label) == 'thoat':
             welcome_window.destroy()
         else:

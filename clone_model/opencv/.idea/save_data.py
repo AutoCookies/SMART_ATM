@@ -104,7 +104,8 @@ try:
                 "account_number": str(idx).zfill(12),
                 "balance": 5000000.0,
                 "debt": 200.0,
-                "bills": bills
+                "bills": bills,
+                "transaction_logs": []
             }
 
             # Insert account data into MongoDB
