@@ -11,3 +11,4 @@ env
 /.idea/data
 models
 stuff_to_enhance_model
+.env
