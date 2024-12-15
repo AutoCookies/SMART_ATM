@@ -1,10 +1,12 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import Widget, filedialog, messagebox
 from PIL import Image, ImageTk
 import cv2
 import numpy as np
+import math
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import img_to_array
+from cvzone.HandTrackingModule import HandDetector
 import os
 import time
 import pygame
@@ -23,6 +25,10 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 load_dotenv()
+stop_flag = False
+opened_windows = set()
+
+
 model_subject = load_model('models\\fingerprint_regconition\\USER.keras')
 model_finger = load_model('models\\fingerprint_regconition\\FINGER.keras')
 
@@ -32,14 +38,38 @@ label_encoder = np.load('models/face_regconition/label_encoder.npy', allow_pickl
 
 model_voice = load_model("models\\voice_model\\voice_attention_test_reg_4.h5")
 voice_labels = "models\\voice_model\\label_map.txt"
-GREETING_AUDIO_PATH = "openSound.wav"
-GOOGBYE_AUDIO_PATH = "goodBye.wav"
+
+sign_model = load_model("models\\signLang_model\\best_model_vgg16.keras")
+
+FACE_DETECT_AUDIO_PATH = "announceSound\\faceDetectSound.wav"
+GREETING_AUDIO_PATH = "announceSound\\openSound.wav"
+GOOGBYE_AUDIO_PATH = "announceSound\\goodBye.wav"
+FINGER_REG_AUDIO_PATH = "announceSound\\fingerSound.wav"
+INFO_CORRECT_PATH = 'announceSound\\infoCorrect.wav'
+FACE_DETECT_FAIL_PATH = 'announceSound\\failToDetectFace.wav'
+SECOND_FACE_DETECT_FAIL_PATH = 'announceSound\\secondTimeFaceDetect.wav'
+THIRD_FACE_DETECT_FAIL_PATH = 'announceSound\\thirdTimeFaceDetect.wav'
+CANCEL_AUDIO_PATH = 'announceSound\\cancelTrans.wav'
+WITHDRAWAL_AUDIO_PATH = 'announceSound\\widrawlAllSound.wav'
+WARNING_AUDIO_PATH = 'announceSound\\warningSound.wav'
+PHONE_CALL_WARNING_AUDIO_PATH = 'announceSound\\warning-notification-call-184996.mp3'
+
+LOG_TEMPLATE_PATH = "template_img\\billBack.png"
+FONT_PATH = "arial.ttf"
 
 img_size = 96
 N_MFCC = 13
 MAX_LEN = 30
 SAMPLE_RATE = 16000
 AUDIO_DURATION = 3
+
+mongo_uri = os.getenv("MONGO_URI")
+if not mongo_uri:
+    raise ValueError("MongoDB URI not found in .env file.")
+
+client = MongoClient(mongo_uri, server_api=ServerApi('1'))
+db = client['Accounts']
+accounts_collection = db['accounts']
 
 # khởi động phát audio
 pygame.mixer.init()
@@ -49,6 +79,18 @@ with open(os.path.join("models\\voice_model", "label_map.txt"), "r") as f:
     for line in f:
         label, idx = line.strip().split("\t")
         label_map[int(idx)] = label
+        
+# class_names = open(sign_label, "r").readlines()
+    
+def play_sound (PATH):
+    try:
+        pygame.mixer.music.load(PATH)
+        pygame.mixer.music.play()
+        while pygame.mixer.music.get_busy():
+            pygame.time.Clock().tick(10)
+    except Exception as e:
+        print(f"Error playing welcome audio: {e}")
+        
 
 def preprocess_image(img_path):
     img_array = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
@@ -114,7 +156,7 @@ def process_frame(frame, face_cascade, model, label_encoder):
         return label
     return None
 
-def recognize_face_from_webcam_with_delay(face_cascade, model, label_encoder, subject_id, cap, delay=7, timeout=20):
+def recognize_face_from_webcam_with_delay(face_cascade, model, label_encoder, subject_id, cap, delay=4, timeout=10):
     start_time = time.time()
 
     # Giai đoạn đợi (delay)
@@ -127,8 +169,8 @@ def recognize_face_from_webcam_with_delay(face_cascade, model, label_encoder, su
         faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
         for (x, y, w, h) in faces:
             cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-        cv2.putText(frame, "Keep your face steady in front of the camera", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        cv2.imshow("Face Recognition - Initializing", frame)
+        # cv2.putText(frame, "Keep your face steady in front of the camera", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        # cv2.imshow("Face Recognition - Initializing", frame)
         if cv2.waitKey(1) % 256 == 27:
             return None
 
@@ -148,33 +190,30 @@ def recognize_face_from_webcam_with_delay(face_cascade, model, label_encoder, su
             break
         if cv2.waitKey(1) % 256 == 27:
             break
-
+    
     return None
 
 def start_face_recognition(subject_id, root, cap):
     attempts = 0
+    play_sound(FACE_DETECT_AUDIO_PATH)
     while attempts < 3:
         face_recognized = recognize_face_from_webcam_with_delay(
-            face_cascade, model_face_recognition, label_encoder, subject_id, cap, delay=7, timeout=20
+            face_cascade, model_face_recognition, label_encoder, subject_id, cap, delay=4, timeout=20
         )
         
         if face_recognized and str(face_recognized) == str(subject_id):
-            user_info = is_valid_user(subject_id)
-            if user_info:
-                username = user_info.get("username", "Unknown User")  # Lấy tên người dùng hoặc gán giá trị mặc định
-                messagebox.showinfo("Success", f"WELCOME {username}! All checks passed.")
-                root.destroy()
-                
-                show_welcome_window(user_info)  # Truyền username vào
-                return True
-            else:
-                messagebox.showerror("Error", "User not found in database. Access denied.")
-                return False
+            play_sound(INFO_CORRECT_PATH)
+            return True
         else:
             attempts += 1
+            play_sound(FACE_DETECT_FAIL_PATH)
             messagebox.showwarning("Cảnh báo!", f"Lần thử thứ {attempts}/3 thất bại. Xin hãy thử lại.")
+    
     capture_unauthorized_face()
+    play_sound(CANCEL_AUDIO_PATH)
     messagebox.showerror("Lỗi!", "Vượt quá số lần thử cho phép. Truy cập bị từ chối.")
+    root.destroy()
+    cv2.destroyAllWindows()
     return False
 
 
@@ -187,8 +226,8 @@ def capture_unauthorized_face():
     if ret:
         cv2.imwrite("unauthorized_person\\unauthorized_access.jpg", frame)
         print("Unauthorized access attempt recorded.")
+        
     cap.release()
-    cv2.destroyAllWindows()
 
 def load_label_map(label_map_path):
     label_map = {}
@@ -208,24 +247,6 @@ def predict_command(command):
     return predicted_class
 
 def show_account_balance_window(user_info):
-    def get_balance_from_db(user_id):
-        """
-        Lấy số dư từ cơ sở dữ liệu MongoDB dựa trên user_id.
-        """
-        # Kết nối đến MongoDB
-        mongo_uri = os.getenv("MONGO_URI")
-        if not mongo_uri:
-            raise ValueError("MongoDB URI not found in .env file.")
-
-        client = MongoClient(mongo_uri)
-        db = client['Accounts']
-        accounts_collection = db['accounts']
-
-        # Truy vấn thông tin tài khoản
-        user_data = accounts_collection.find_one({"user_id": user_id})
-        if user_data and "balance" in user_data:
-            return user_data["balance"]
-        return 0  # Trả về 0 nếu không tìm thấy user hoặc không có thông tin số dư
 
     balance_window = tk.Toplevel()
     balance_window.title("Số Dư Tài Khoản")
@@ -234,13 +255,9 @@ def show_account_balance_window(user_info):
 
     # Hiển thị nhãn tiêu đề
     balance_label = tk.Label(balance_window, text="Số dư tài khoản của bạn là:", font=("Arial", 14), bg="#E7F9E5")
-    balance_label.pack(pady=20)
+    balance_label.pack(pady=20) 
 
-    mongo_uri = os.getenv("MONGO_URI")
-
-    client = MongoClient(mongo_uri)
-    db = client['Accounts']
-    accounts_collection = db['accounts']
+    # Lấy dữ liệu tài khoản tại CSDL
     user_data = accounts_collection.find_one({"user_id": user_info["user_id"]})
 
     balance = user_data['balance']
@@ -259,11 +276,16 @@ def show_account_balance_window(user_info):
         print(f"Predicted label: {predicted_label}")
 
         if predicted_label == "tro_lai":
-            show_account_balance_window.destroy()
+            balance_window.destroy()
+            opened_windows.remove(balance_window)
 
     listen_button = tk.Button(balance_window, text="Lắng nghe lệnh", font=("Arial", 14), width=20, command=listen_for_voice_commands)
     listen_button.pack(pady=20)
-
+    
+    if balance_window not in opened_windows:
+        opened_windows.add(balance_window)
+    
+    
 def show_recharge_window():
     recharge_window = tk.Toplevel()
     recharge_window.title("Nạp Tiền")
@@ -283,6 +305,19 @@ def show_recharge_window():
     
     back_button = tk.Button(recharge_window, text="Quay lại", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", width=20, command=recharge_window.destroy)
     back_button.pack(pady=10)
+    
+    def listen_for_voice_commands():
+        audio = record_audio(duration=3)  # Ví dụ: Ghi âm 3 giây
+        predicted_label = predict_audio_class(audio)
+        print(f"Predicted label: {predicted_label}")
+        
+        if predicted_label == "tro_lai":
+            recharge_window.destroy()
+        else:
+            print("Lệnh không nhận diện được.")
+
+    listen_button = tk.Button(recharge_window, text="Lắng nghe lệnh", font=("Arial", 14), width=20, command=listen_for_voice_commands)
+    listen_button.pack(pady=20)
 
 def show_withdrawal_window(user_info):
     withdrawal_window = tk.Toplevel()
@@ -323,11 +358,21 @@ def show_withdrawal_window(user_info):
             client = MongoClient(mongo_uri, server_api=ServerApi('1'))
             db = client['Accounts']
             accounts_collection = db['accounts']
+            
+            withdrawl_data = {
+                "Account": user_info['account_number'],
+                "Type": "Withdrawal",
+                "amount": withdrawal_amount,
+                "timestamp": datetime.now()
+            }
 
             # Thực hiện cập nhật số dư
             result = accounts_collection.update_one(
                 {"user_id": user_id},
-                {"$set": {"balance": new_balance}}
+                {
+                    "$set": {"balance": new_balance},
+                    "$push": {"transaction_logs": withdrawl_data}
+                }
             )
 
             if result.modified_count > 0:
@@ -368,6 +413,8 @@ def show_withdrawal_window(user_info):
 
     listen_button = tk.Button(withdrawal_window, text="Lắng nghe lệnh", font=("Arial", 14), width=20, command=listen_for_voice_commands)
     listen_button.pack(pady=20)
+    
+    play_sound(WITHDRAWAL_AUDIO_PATH)
 
 def show_payment_window(user_info):
     def sort_bills(criteria):
@@ -395,36 +442,51 @@ def show_payment_window(user_info):
 
         mongo_uri = os.getenv("MONGO_URI")
         if not mongo_uri:
-            raise ValueError("MongoDB URI not found in .env file.")
+            messagebox.showerror("Lỗi", "MongoDB URI not found in .env file.")
+            return
 
-        client = MongoClient(mongo_uri, server_api=ServerApi('1'))
-        db = client['Accounts']
-        accounts_collection = db['accounts']
+        try:
+            client = MongoClient(mongo_uri, server_api=ServerApi('1'))
+            db = client['Accounts']
+            accounts_collection = db['accounts']
 
-        if balance >= total_amount:
-            user_info['balance'] -= total_amount
+            if balance >= total_amount:
+                user_info['balance'] -= total_amount
 
-            # Cập nhật các hóa đơn là đã thanh toán
-            for bill in user_info['bills']:
-                if not bill['is_paid']:
-                    bill['is_paid'] = True
-                    bill['paid_amount'] = bill['total_amount']
+                # Mark bills as paid in user_info
+                for bill in user_info['bills']:
+                    if not bill['is_paid']:
+                        bill['is_paid'] = True
+                        bill['paid_amount'] = bill['total_amount']
 
-            # Cập nhật số dư trong MongoDB
-            result = accounts_collection.update_one(
-                {"user_id": user_info['user_id']},
-                {"$set": {"balance": user_info['balance']}}
-            )
+                # Prepare payment transaction data
+                payment_data = {
+                    "sender_account": user_info['account_number'],
+                    "Type": "Bill Payment",
+                    "amount": total_amount,
+                    "timestamp": datetime.now()
+                }
 
-            if result.modified_count > 0:
-                messagebox.showinfo("Thanh toán thành công", f"Đã thanh toán {total_amount} vnđ.\nSố dư còn lại: {user_info['balance']} vnđ.")
+                # Update balance and transaction logs in MongoDB
+                result = accounts_collection.update_one(
+                    {"user_id": user_info['user_id']},
+                    {
+                        "$set": {"balance": user_info['balance']},
+                        "$push": {"transaction_logs": payment_data}
+                    }
+                )
+
+                if result.modified_count > 0:
+                    messagebox.showinfo("Thanh toán thành công", f"Đã thanh toán {total_amount} vnđ.\nSố dư còn lại: {user_info['balance']} vnđ.")
+                    refresh_bills()  # Refresh the UI or bill display
+                else:
+                    messagebox.showerror("Lỗi", "Không thể cập nhật số dư. Vui lòng thử lại sau.")
+
             else:
-                messagebox.showerror("Lỗi", "Không thể cập nhật số dư. Vui lòng thử lại sau.")
+                messagebox.showerror("Thanh toán thất bại", f"Số dư không đủ. Cần {total_amount}, nhưng chỉ còn {user_info['balance']}.")
 
-            refresh_bills()
-
-        else:
-            messagebox.showerror("Thanh toán thất bại", f"Số dư không đủ. Cần {total_amount}, nhưng chỉ còn {user_info['balance']}.")
+        except Exception as e:
+            messagebox.showerror("MongoDB Error", f"Kết nối MongoDB thất bại: {str(e)}")
 
     def listen_for_voice_commands():
         audio = record_audio(duration=3)  # Ví dụ: Ghi âm 3 giây
@@ -432,7 +494,7 @@ def show_payment_window(user_info):
         print(f"Predicted label: {predicted_label}")
 
         if predicted_label == "tro_lai":
-            show_payment_window.destroy()
+            payment_window.destroy()
         else:
             print("Lệnh không nhận diện được.")
 
@@ -485,178 +547,142 @@ def show_payment_window(user_info):
     refresh_bills()
     
 def show_transfer_window(user_info):
-    transfer_window = tk.Toplevel()
-    transfer_window.title("Chuyển tiền")
-    transfer_window.geometry("800x600")
-    transfer_window.configure(bg="#E7F9E5")
-
-    # Tiêu đề
-    title_label = tk.Label(transfer_window, text="Chuyển Tiền", font=("Arial", 20, "bold"), bg="#E7F9E5", fg="#2D6A4F")
-    title_label.pack(pady=20)
-
-    # Frame chứa các mục nhập
-    form_frame = tk.Frame(transfer_window, bg="#E7F9E5")
-    form_frame.pack(pady=20, padx=20)
-
-    # Nhập số tài khoản người nhận
-    recipient_label = tk.Label(form_frame, text="Số tài khoản người nhận:", font=("Arial", 14), bg="#E7F9E5", fg="#2D6A4F")
-    recipient_label.grid(row=0, column=0, padx=10, pady=10, sticky="w")
-    recipient_entry = tk.Entry(form_frame, font=("Arial", 14), width=30)
-    recipient_entry.grid(row=0, column=1, padx=10, pady=10)
-
-    # Nhập số tiền
-    amount_label = tk.Label(form_frame, text="Số tiền chuyển (VND):", font=("Arial", 14), bg="#E7F9E5", fg="#2D6A4F")
-    amount_label.grid(row=1, column=0, padx=10, pady=10, sticky="w")
-    amount_entry = tk.Entry(form_frame, font=("Arial", 14), width=30)
-    amount_entry.grid(row=1, column=1, padx=10, pady=10)
-
-    # Nhập nội dung chuyển tiền
-    note_label = tk.Label(form_frame, text="Nội dung chuyển tiền:", font=("Arial", 14), bg="#E7F9E5", fg="#2D6A4F")
-    note_label.grid(row=2, column=0, padx=10, pady=10, sticky="w")
-    note_entry = tk.Entry(form_frame, font=("Arial", 14), width=30)
-    note_entry.grid(row=2, column=1, padx=10, pady=10)
-
     def confirm_transfer():
         recipient_account = recipient_entry.get()
         amount = amount_entry.get()
         note = note_entry.get()
 
-        # Kết nối MongoDB
-        mongo_uri = os.getenv("MONGO_URI")
-        if not mongo_uri:
-            raise ValueError("MongoDB URI not found in .env file.")
-
-        client = MongoClient(mongo_uri)
-        db = client['Accounts']
-        accounts_collection = db['accounts']
-
-        sender_account = accounts_collection.find_one({"user_id": user_info['user_id']})
-
-        if not sender_account:
-            tk.messagebox.showerror("Lỗi", "Không tìm thấy tài khoản của bạn.")
-            return
-
-        if not recipient_account or not amount:
-            tk.messagebox.showerror("Lỗi", "Vui lòng nhập đầy đủ thông tin.")
-            return
-
         try:
+            sender_account = accounts_collection.find_one({"user_id": user_info['user_id']})
+            if not sender_account:
+                raise ValueError("Không tìm thấy tài khoản của bạn.")
+
+            if not recipient_account or not amount:
+                raise ValueError("Vui lòng nhập đầy đủ thông tin.")
+
             amount = float(amount)
             if amount <= 0:
                 raise ValueError("Số tiền phải lớn hơn 0.")
             if amount > sender_account['balance']:
                 raise ValueError("Số dư không đủ.")
-        except ValueError as e:
-            tk.messagebox.showerror("Lỗi", str(e))
-            return
 
-        recipient_data = accounts_collection.find_one({"account_number": recipient_account})
-        if not recipient_data:
-            tk.messagebox.showerror("Lỗi", "Tài khoản người nhận không tồn tại.")
-            return
+            recipient_data = accounts_collection.find_one({"account_number": recipient_account})
+            if not recipient_data:
+                raise ValueError("Tài khoản người nhận không tồn tại.")
 
-        try:
-            
-            
-            # Ghi log giao dịch riêng biệt cho người gửi
-            sent_data = {
+            # Cập nhật giao dịch
+            transaction_data = {
                 "sender_account": sender_account['account_number'],
                 "recipient_account": recipient_account,
                 "amount": amount,
                 "note": note,
                 "timestamp": datetime.now()
             }
-            
-            # Ghi log giao dịch riêng biệt cho người nhận
-            received_data = {
-                "recipient_account": recipient_account,
-                "sender_account": sender_account['account_number'],
-                "amount": amount,
-                "note": note,
-                "timestamp": datetime.now()
-            }
-            
-            # Cập nhật số dư cho tài khoản gửi
+
             accounts_collection.update_one(
                 {"user_id": user_info['user_id']},
-                {"$inc": {"balance": -amount}},
-                {"transaction_logs": {"$push": sent_data}}
+                {"$inc": {"balance": -amount}, "$push": {"transaction_logs": transaction_data}}
             )
-            # Cập nhật số dư cho tài khoản người nhận
+
             accounts_collection.update_one(
                 {"account_number": recipient_account},
-                {"$inc": {"balance": amount}},
-                {"transaction_logs": {"$push": received_data}}
+                {"$inc": {"balance": amount}, "$push": {"transaction_logs": transaction_data}}
             )
 
-            tk.messagebox.showinfo(
-                "Thành công",
-                f"Chuyển {amount:,.0f} VND đến tài khoản {recipient_account} thành công!\nNội dung: {note}"
-            )
+            # Tạo hóa đơn
+            invoice_data = {
+                "invoice_number": f"INV-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                "date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                "amount": f"{amount:,.0f}",
+                "note": note
+            }
+            
+            create_invoice(LOG_TEMPLATE_PATH, "receipt_temp.jpg", invoice_data, recipient_data)
 
-            # Tạo hóa đơn hình ảnh
-            create_receipt_image(recipient_account, amount, note)
-
+            # Ask the user to save the invoice
             if tk.messagebox.askyesno("Lưu Hóa Đơn", "Bạn có muốn lưu hóa đơn không?"):
-                filepath = filedialog.asksaveasfilename(defaultextension=".jpg",
-                                                        filetypes=[("JPEG files", "*.jpg")])
-                if filepath:
-                    image = Image.open('receipt_temp.jpg')
-                    image.save(filepath)
-                    tk.messagebox.showinfo("Đã lưu", f"Hóa đơn đã được lưu tại {filepath}")
+                image = Image.open('receipt_temp.jpg')
+                image.save('receipt_temp.jpg')
+                tk.messagebox.showinfo("Đã lưu", f"Hóa đơn đã được lưu")
 
+
+            messagebox.showinfo("Thành công", f"Chuyển tiền thành công! Số tiền: {amount:,.0f} VND")
             transfer_window.destroy()
 
         except Exception as e:
-            tk.messagebox.showerror("Lỗi", f"Đã xảy ra lỗi trong giao dịch: {str(e)}")
-            
+            messagebox.showerror("Lỗi", str(e))
+
+    def create_invoice(template_path, output_path, data, recipient_data):
+        try:
+            # Mở template PNG
+            template = Image.open(template_path)
+
+            # Nếu hình ảnh ở chế độ RGBA, chuyển sang RGB
+            if template.mode == "RGBA":
+                template = template.convert("RGB")
+
+            draw = ImageDraw.Draw(template)
+            font = ImageFont.truetype(FONT_PATH, size=36)
+
+            draw.text((200, 500), f"Số hóa đơn: {data['invoice_number']}", fill="black", font=font)
+            draw.text((200, 600), f"Người gửi: {user_info['username']}", fill="black", font=font)
+            draw.text((200, 700), f"Người nhận: {recipient_data['username']}", fill="black", font=font)
+            draw.text((200, 800), f"Ngày: {data['date']}", fill="black", font=font)
+            draw.text((200, 900), f"Số tiền: {data['amount']} VND", fill="black", font=font)
+            draw.text((200, 1000), f"Nội dung: {data['note']}", fill="black", font=font)
+
+            # Lưu hình ảnh ở định dạng PNG
+            template.save(output_path, "PNG")
+
+        except Exception as e:
+            raise ValueError(f"Không thể tạo hóa đơn: {e}")
+
+    # Giao diện Tkinter
+    transfer_window = tk.Toplevel()
+    transfer_window.title("Chuyển tiền")
+    transfer_window.geometry("800x600")
+    transfer_window.configure(bg="#E7F9E5")
+
+    tk.Label(transfer_window, text="Chuyển Tiền", font=("Arial", 20, "bold"), bg="#E7F9E5", fg="#2D6A4F").pack(pady=20)
+
+    form_frame = tk.Frame(transfer_window, bg="#E7F9E5")
+    form_frame.pack(pady=20, padx=20)
+
+    tk.Label(form_frame, text="Số tài khoản người nhận:", font=("Arial", 14), bg="#E7F9E5", fg="#2D6A4F").grid(row=0, column=0, padx=10, pady=10, sticky="w")
+    recipient_entry = tk.Entry(form_frame, font=("Arial", 14), width=30)
+    recipient_entry.grid(row=0, column=1, padx=10, pady=10)
+
+    tk.Label(form_frame, text="Số tiền chuyển (VND):", font=("Arial", 14), bg="#E7F9E5", fg="#2D6A4F").grid(row=1, column=0, padx=10, pady=10, sticky="w")
+    amount_entry = tk.Entry(form_frame, font=("Arial", 14), width=30)
+    amount_entry.grid(row=1, column=1, padx=10, pady=10)
+
+    tk.Label(form_frame, text="Nội dung chuyển tiền:", font=("Arial", 14), bg="#E7F9E5", fg="#2D6A4F").grid(row=2, column=0, padx=10, pady=10, sticky="w")
+    note_entry = tk.Entry(form_frame, font=("Arial", 14), width=30)
+    note_entry.grid(row=2, column=1, padx=10, pady=10)
+
+    tk.Button(transfer_window, text="Xác nhận", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", command=confirm_transfer).pack(pady=20)
+    tk.Button(transfer_window, text="Quay lại", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", command=transfer_window.destroy).pack(pady=10)
+
     def listen_for_voice_commands():
         audio = record_audio(duration=AUDIO_DURATION)
         predicted_label = predict_audio_class(audio)
         print(f"Predicted label: {predicted_label}")
         
-        if str(predicted_label) == 'tro_lai':
-            transfer_window.destroy()
-        elif str(predicted_label) == 'xac_nhan':
+        if str(predicted_label) == 'xac_nhan':
             confirm_transfer()
         elif str(predicted_label) == 'xoa':
-            amount_entry.delete(0, tk.END)
-            note_entry.delete(0, tk.END)
-        elif str(predicted_label) == '100k':
-            amount_entry.insert(100000, tk.END)
-        elif str(predicted_label) == '200k':
-            amount_entry.insert(200000, tk.END)
-        elif str(predicted_label) == '500k':
-            amount_entry.insert(500000, tk.END)
+            recipient_entry.delete(0, 'end')
+            amount_entry.delete(0, 'end')
+            note_entry.delete(0, 'end')
+        elif str(predicted_label) == 'tro_lai':
+            transfer_window.destroy()
         else:
             print('CÁC LỆNH KHÁC')
 
-    def create_receipt_image(recipient, amount, note):
-        width, height = 400, 300
-        image = Image.new("RGB", (width, height), color=(255, 255, 255))
-
-        draw = ImageDraw.Draw(image)
-        font = ImageFont.load_default()
-
-        y_position = 20
-        draw.text((20, y_position), f"Số tài khoản: {recipient}", fill=(0, 0, 0), font=font)
-        y_position += 30
-        draw.text((20, y_position), f"Số tiền: {amount} VND", fill=(0, 0, 0), font=font)
-        y_position += 30
-        draw.text((20, y_position), f"Nội dung: {note}", fill=(0, 0, 0), font=font)
-
-        # Lưu hình ảnh tạm thời
-        image.save("receipt_temp.jpg")
-
-    confirm_button = tk.Button(transfer_window, text="Xác nhận", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", command=confirm_transfer)
-    confirm_button.pack(pady=20)
-
-    # Nút quay lại
-    back_button = tk.Button(transfer_window, text="Quay lại", font=("Arial", 14), bg="#95D5B2", fg="#1B4332", command=transfer_window.destroy)
-    back_button.pack(pady=10)
-    
     listen_for_voice_commands_button = tk.Button(transfer_window, text="Start Listening for Commands", font=("Arial", 14), command=listen_for_voice_commands)
     listen_for_voice_commands_button.pack(pady=20)
+    
+    transfer_window.mainloop()
     
 def show_welcome_window(user_info):
     welcome_window = tk.Toplevel()
@@ -741,29 +767,25 @@ def show_welcome_window(user_info):
             show_transfer_window(user_info)
         elif str(predicted_label) == 'thoat':
             welcome_window.destroy()
+            opened_windows.remove(welcome_window)
         else:
             print('CÁC LỆNH KHÁC')
 
     listen_for_voice_commands_button = tk.Button(welcome_window, text="Start Listening for Commands", font=("Arial", 14), command=listen_for_voice_commands)
     listen_for_voice_commands_button.pack(pady=20)
 
+    if welcome_window not in opened_windows:
+        opened_windows.add(welcome_window)
+
+
 def is_valid_user(subject_id):
     """
     Kiểm tra xem subject_id có tồn tại trong cơ sở dữ liệu hay không.
     Trả về thông tin người dùng nếu tồn tại, ngược lại trả về None.
     """
-    mongo_uri = os.getenv("MONGO_URI")
-    if not mongo_uri:
-        raise ValueError("MongoDB URI not found in .env file.")
-
-    client = MongoClient(mongo_uri, server_api=ServerApi('1'))
-    db = client['Accounts']
-    accounts_collection = db['accounts']
-
     # Lấy thông tin người dùng từ cơ sở dữ liệu
     user = accounts_collection.find_one({"user_id": int(subject_id)})
     return user  # Trả về thông tin người dùng hoặc None nếu không tồn tại
-
 
 def fingerprint_upload_window(cap):
     finger_print_window = tk.Toplevel()
@@ -800,8 +822,14 @@ def fingerprint_upload_window(cap):
             messagebox.showinfo("Fingerprint Prediction", f"Subject ID: {subject_id}, Finger Type: {finger_num}")
             prediction_label.config(text=f"Subject ID: {subject_id}, Finger Type: {finger_num}")
             if start_face_recognition(subject_id, root, cap):
-                root.destroy()
-                show_welcome_window(str(subject_id))
+                user_info = is_valid_user(subject_id)
+                if user_info:
+                    username = user_info.get("username", "Unknown User")  # Lấy tên người dùng hoặc gán giá trị mặc định
+                    messagebox.showinfo("Success", f"WELCOME {username}! All checks passed.")
+                    finger_print_window.destroy()
+                    show_welcome_window(user_info)
+            else:
+                messagebox.showerror("Error", "Face recognition failed.")
         else:
             messagebox.showerror("Error", "Subject ID not found in database.")
 
@@ -822,27 +850,17 @@ def play_goodbye():
     except Exception as e:
         print(f"Error playing goodbye audio: {e}")
 
-def play_greeting():
-    try:
-        pygame.mixer.music.load(GREETING_AUDIO_PATH)
-        pygame.mixer.music.play()
-        while pygame.mixer.music.get_busy():
-            pygame.time.Clock().tick(10)
-    except Exception as e:
-        print(f"Error playing welcome audio: {e}")
-
-def detect_face_and_greet():
-    cap = cv2.VideoCapture(0)
-
+def detect_face_and_greet(cap):
+    global stop_flag
     detected = False
     start_time = None
     no_face_start_time = None
     face_present = False
-    bat_dau_detected = False  # Biến cờ để theo dõi lệnh đã được phát hiện
+    bat_dau_detected = False
 
-    while True:
+    while not stop_flag:
         ret, frame = cap.read()
-        if not ret:
+        if not ret or stop_flag:
             break
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -850,24 +868,23 @@ def detect_face_and_greet():
 
         if len(faces) > 0:
             face_present = True
-            no_face_start_time = None  # Reset no face timer
+            no_face_start_time = None
 
             if not detected:
                 detected = True
                 start_time = time.time()
 
             if time.time() - start_time >= 2 and not bat_dau_detected:
-                play_greeting()
+                play_sound(GREETING_AUDIO_PATH)
                 audio = record_audio(duration=AUDIO_DURATION)
                 predicted_label = predict_audio_class(audio)
                 print(f"Predicted label: {predicted_label}")
 
                 if predicted_label == "bat_dau":
+                    play_sound(FINGER_REG_AUDIO_PATH)
                     fingerprint_upload_window(cap)
                     bat_dau_detected = True
-
-                time.sleep(3)  # Optional delay
-
+                time.sleep(3)
                 detected = False
 
         else:
@@ -876,27 +893,134 @@ def detect_face_and_greet():
                     no_face_start_time = time.time()
 
                 if time.time() - no_face_start_time >= 5:
-                    play_goodbye()
+                    play_sound(GOOGBYE_AUDIO_PATH)
                     face_present = False
-                    # break
 
             detected = False
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
+        
+        
+def detect_hand(cap):
+    global stop_flag
+    detector = HandDetector(maxHands=1)
+
+    offset = 20
+    imgSize = 300
+    words = ''  # Save predicted characters
+
+    prediction_delay = 2.0  # 1-second delay
+    last_prediction_time = time.time()
+
+    print("Press 'q' to quit.")
+
+    while not stop_flag:
+        success, img = cap.read()
+
+        if not success or stop_flag:
+            break
+
+        hands, img = detector.findHands(img)
+
+        if hands:
+            hand = hands[0]
+            x, y, w, h = hand['bbox']
+
+            imgHeight, imgWidth, _ = img.shape
+            x1 = max(0, x - offset)
+            y1 = max(0, y - offset)
+            x2 = min(imgWidth, x + w + offset)
+            y2 = min(imgHeight, y + h + offset)
+
+            imgCrop = img[y1:y2, x1:x2]
+
+            if imgCrop.size != 0:
+                aspectRatio = h / w
+
+                if aspectRatio > 1:
+                    k = 150 / h
+                    wCal = math.ceil(k * w)
+                    imgResize = cv2.resize(imgCrop, (wCal, 150))
+                    wGap = math.ceil((150 - wCal) / 2)
+                    imgWhite = np.ones((150, 150, 3), np.uint8) * 255
+                    imgWhite[:, wGap:wCal + wGap] = imgResize
+                else:
+                    k = 150 / w
+                    hCal = math.ceil(k * h)
+                    imgResize = cv2.resize(imgCrop, (150, hCal))
+                    hGap = math.ceil((150 - hCal) / 2)
+                    imgWhite = np.ones((150, 150, 3), np.uint8) * 255
+                    imgWhite[hGap:hCal + hGap, :] = imgResize
+
+                imgWhite_norm = imgWhite.astype(np.float32) / 255.0
+                imgWhite_norm = np.expand_dims(imgWhite_norm, axis=0)
+
+                current_time = time.time()
+                if current_time - last_prediction_time > prediction_delay:
+                    try:
+                        prediction = sign_model.predict(imgWhite_norm)
+                        predicted_class = np.argmax(prediction[0])
+
+                        char = 'S' if predicted_class == 1 else 'O'
+                        words += char
+
+                        print(f"Predicted Character: {char}")
+
+                        if len(words) >= 3 and words[-3:] == 'SOS':
+                            stop_flag = True
+                            show_locked_screen()
+                            break
+
+                    except Exception as e:
+                        print(f"Prediction Error: {e}")
+
+                    last_prediction_time = current_time
+
+        # Chổ này để show cái hỉnh camera lên nhá
+        # cv2.imshow('Camera Feed', img)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
     cap.release()
     cv2.destroyAllWindows()
+    
+def close_all_windows():
+    """
+    Đóng tất cả các cửa sổ đang mở khi phát hiện SOS.
+    """
+    global opened_windows
+    for window in list(opened_windows):  # Sử dụng list() để tránh thay đổi set trong vòng lặp
+        if window.winfo_exists():  # Kiểm tra xem cửa sổ có tồn tại không
+            try:
+                window.destroy()
+            finally:
+                opened_windows.remove(window)
+
+def show_locked_screen():
+    global root
+    for widget in root.winfo_children():
+        widget.destroy()
+
+    play_sound(WARNING_AUDIO_PATH)
+    play_sound(PHONE_CALL_WARNING_AUDIO_PATH)
+    lock_label = tk.Label(root, text="APPLICATION LOCKED\nSOS DETECTED", font=("Arial", 20), fg="red")
+    lock_label.pack(expand=True)
 
 def begin_GUI(root):
-    root.title("Face Detection Greeting")
-    tk.Label(root, text="CHÀO MỪNG BẠN ĐÃ ĐẾN VỚI ATM THÔNG MINH!").pack(pady=20)
-    threading.Thread(target=detect_face_and_greet, daemon=True).start()
-    
+    cap = cv2.VideoCapture(0)
+
+    root.title("SMART ATM SYSTEM")
+    tk.Label(root, text="CHÀO MỪNG BẠN ĐẾN VỚI ATM THÔNG MINH!").pack(pady=20)
+    face_thread = threading.Thread(target=detect_face_and_greet, args=(cap,), daemon=True)
+    hand_thread = threading.Thread(target=detect_hand, args=(cap,), daemon=True)
+
+    face_thread.start()
+    hand_thread.start()
+        
+    root.mainloop()
+    cap.release()
+
 root = tk.Tk()
-root.title("SMART ATM SYSTEM")
-root.geometry("500x400")
-
 begin_GUI(root)
-
-root.mainloop()
+cv2.destroyAllWindows()

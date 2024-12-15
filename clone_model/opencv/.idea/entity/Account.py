@@ -2,7 +2,6 @@ import User
 import TransactionLog
 from datetime import datetime
 
-
 class Account(User):
     def __init__(self, user_id, username, fingerprints, face_image, accountNumber, balance=0.0, debt=0.0, bills=None):
         """

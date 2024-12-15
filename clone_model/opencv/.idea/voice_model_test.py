@@ -7,7 +7,7 @@ from tensorflow.keras.models import load_model
 import time
 
 # Constants
-MODEL_DIRECTORY = "voice_model"
+MODEL_DIRECTORY = "modes/voice_model"
 N_MFCC = 13  # Number of MFCC features
 MAX_LEN = 30  # Adjusted MAX_LEN to match audio lengths
 SAMPLE_RATE = 16000  # Sample rate for audio recording
@@ -68,89 +68,69 @@ if __name__ == "__main__":
         time.sleep(1)  # Adjust the delay if necessary
 
 # # ====================== UPLOAD VERSION ==============================
-# # import os
-# # import numpy as np
-# # import librosa
-# # import tensorflow as tf
-# # from tensorflow.keras.models import load_model
-# # import tkinter as tk
-# # from tkinter import filedialog  # For file dialog to select audio file
-# # import sounddevice as sd  # For recording audio
-# # import scipy.signal
+# import os
+# import numpy as np
+# import librosa
+# import tensorflow as tf
+# from tensorflow.keras.models import load_model
+# import tkinter as tk
+# from tkinter import filedialog, messagebox
 
-# # # Constants
-# # MODEL_DIRECTORY = "voice_model"
-# # MODEL_PATH = os.path.join(MODEL_DIRECTORY, "rnn_attention_model.h5")
-# # LABEL_MAP_PATH = os.path.join(MODEL_DIRECTORY, "label_map.txt")
-# # SAMPLERATE = 16000  # Sample rate for audio recording
-# # N_MFCC = 13         # Number of MFCC features
-# # MAX_LEN = 30         # Maximum length of the MFCC
+# # Constants
+# MODEL_PATH = "models\\voice_model\\voice_attention_test_reg_4.h5"
+# LABEL_MAP_PATH = "models\\voice_model\\label_map.txt"
+# SAMPLERATE = 16000  # Tốc độ lấy mẫu cho ghi âm/audio
+# N_MFCC = 13         # Số đặc trưng MFCC
+# MAX_LEN = 30        # Độ dài tối đa MFCC
 
-# # # Function to load the label map
-# # def load_label_map(label_map_path):
-# #     label_map = {}
-# #     with open(label_map_path, "r") as f:
-# #         for line in f:
-# #             label, idx = line.strip().split("\t")
-# #             label_map[int(idx)] = label
-# #     return label_map
+# # Load model và label map
+# def load_label_map(label_map_path):
+#     label_map = {}
+#     with open(label_map_path, "r") as f:
+#         for line in f:
+#             label, idx = line.strip().split("\t")
+#             label_map[int(idx)] = label
+#     return label_map
 
-# # # Function to preprocess the audio and extract MFCC features
-# # def preprocess_audio(audio, sample_rate=SAMPLERATE, max_len=MAX_LEN, n_mfcc=N_MFCC):
-# #     mfcc = librosa.feature.mfcc(y=audio, sr=sample_rate, n_mfcc=n_mfcc)
-# #     if mfcc.shape[1] < max_len:
-# #         pad_width = max_len - mfcc.shape[1]
-# #         mfcc = np.pad(mfcc, pad_width=((0, 0), (0, pad_width)), mode='constant')
-# #     else:
-# #         mfcc = mfcc[:, :max_len]
-# #     return mfcc.T  # Transpose to match the input shape
+# # Preprocess audio để tạo MFCC
+# def preprocess_audio(audio, sample_rate=SAMPLERATE, max_len=MAX_LEN, n_mfcc=N_MFCC):
+#     mfcc = librosa.feature.mfcc(y=audio, sr=sample_rate, n_mfcc=n_mfcc)
+#     if mfcc.shape[1] < max_len:
+#         pad_width = max_len - mfcc.shape[1]
+#         mfcc = np.pad(mfcc, pad_width=((0, 0), (0, pad_width)), mode='constant')
+#     else:
+#         mfcc = mfcc[:, :max_len]
+#     return mfcc.T
 
-# # # Function to record audio from the microphone
-# # def record_audio(duration=3, samplerate=SAMPLERATE):
-# #     print("Recording...")
-# #     audio = sd.rec(int(duration * samplerate), samplerate=samplerate, channels=1, dtype='float32')
-# #     sd.wait()  # Wait until the recording is finished
-# #     return audio.flatten()
+# # Dự đoán nhãn từ tệp âm thanh
+# def predict_label(file_path):
+#     audio, sample_rate = librosa.load(file_path, sr=SAMPLERATE)
+#     audio_mfcc = preprocess_audio(audio, sample_rate)
 
-# # # Function to upload an audio file using a file dialog
-# # def upload_audio_file():
-# #     root = tk.Tk()
-# #     root.withdraw()  # Hide the root window
-# #     file_path = filedialog.askopenfilename(title="Select an audio file", filetypes=[("WAV files", "*.wav")])
-# #     return file_path
+#     audio_mfcc = np.expand_dims(audio_mfcc, axis=0)  # Batch size, time steps, features
+#     prediction = model.predict(audio_mfcc)
+#     predicted_class = np.argmax(prediction, axis=1)[0]
+#     predicted_label = label_map.get(predicted_class, "Unknown")
+    
+#     return predicted_label
 
-# # # Main testing script
-# # if __name__ == "__main__":
-# #     # Load the model and label map
-# #     print("Loading model...")
-# #     model = load_model(MODEL_PATH)
-# #     label_map = load_label_map(LABEL_MAP_PATH)
-# #     print("Model and label map loaded.")
+# # Chọn tệp âm thanh từ giao diện
+# def select_audio_file():
+#     file_path = filedialog.askopenfilename(filetypes=[("WAV files", "*.wav")])
+#     if file_path:
+#         label = predict_label(file_path)
+#         messagebox.showinfo("Prediction Result", f"Predicted Label: {label}")
 
-# #     # Upload an audio file
-# #     audio_file_path = upload_audio_file()
-# #     if not audio_file_path:
-# #         print("No file selected. Exiting.")
-# #         exit()
+# # Tạo giao diện Tkinter
+# root = tk.Tk()
+# root.title("Voice Prediction GUI")
 
-# #     # Load the selected audio file
-# #     audio, sample_rate = librosa.load(audio_file_path, sr=SAMPLERATE)
+# model = load_model(MODEL_PATH)
+# label_map = load_label_map(LABEL_MAP_PATH)
 
-# #     # Preprocess the audio
-# #     audio_mfcc = preprocess_audio(audio, sample_rate=sample_rate)
+# tk.Label(root, text="Click button to select audio file").pack(pady=10)
+# btn_select = tk.Button(root, text="Select File", command=select_audio_file)
+# btn_select.pack(pady=20)
 
-# #     # Expand dimensions to match model input (batch size, time steps, features)
-# #     audio_mfcc = np.expand_dims(audio_mfcc, axis=0)
-
-# #     # Make prediction
-# #     print("Predicting...")
-# #     prediction = model.predict(audio_mfcc)
-# #     predicted_class = np.argmax(prediction, axis=1)[0]  # Get the index of the highest probability
-
-# #     # Map the predicted class index to the actual label
-# #     predicted_label = label_map.get(predicted_class, "Unknown")
-
-# #     # Output the result
-# #     print(f"Predicted class index: {predicted_class}")
-# #     print(f"Predicted label: {predicted_label}")
-
+# # Chạy giao diện Tkinter
+# root.mainloop()

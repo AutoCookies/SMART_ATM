@@ -19,7 +19,7 @@ from tensorflow.keras.models import load_model
 
 # Constants
 DATA_DIR = "data\\converted_data2"  # Updated directory containing converted .wav files
-MODEL_NAME = "voice_attention_test_reg_4.h5"
+MODEL_NAME = "voice_attention_test_reg_5.h5"
 MODEL_DIRECTORY = "models\\voice_model"
 MAX_LEN = 30  # Adjusted MAX_LEN to match audio lengths
 N_MFCC = 13    # Number of MFCC features
@@ -125,7 +125,7 @@ def load_data(data_dir, max_len=MAX_LEN, max_files_per_label=50):
     if not os.path.exists(data_dir):
         raise ValueError(f"Data directory {data_dir} does not exist.")
     
-    noise, _ = librosa.load("stuff_to_enhance_model/traffic-32180.wav", sr=16000)
+    noise, _ = librosa.load("stuff_to_enhance_model/crowd-worried-90368.wav", sr=16000)
     
     for idx, folder in enumerate(os.listdir(data_dir)):
         folder_path = os.path.join(data_dir, folder)
@@ -140,12 +140,12 @@ def load_data(data_dir, max_len=MAX_LEN, max_files_per_label=50):
                     # Apply normalization and compression
                     audio = normalize_audio(audio)
                     audio = compress_audio(audio)
-                    noisy_audio = add_noise(audio, noise, 50)
+                    # noisy_audio = add_noise(audio, noise, 50)
                     # Apply augmentation
-                    audio_noisy, audio_stretched, audio_shifted = augment_audio(noisy_audio, sample_rate)
+                    audio_noisy, audio_stretched, audio_shifted = augment_audio(audio, sample_rate)
 
                     # Extract MFCCs for the original and augmented versions
-                    for augmented_audio in [noisy_audio, audio_noisy, audio_stretched, audio_shifted]:
+                    for augmented_audio in [audio, audio_noisy, audio_stretched, audio_shifted]:
                         mfcc = librosa.feature.mfcc(y=augmented_audio, sr=sample_rate, n_mfcc=N_MFCC)
                         mfcc = normalize_mfcc(mfcc)  # Normalize MFCCs
                         mfcc = pad_audio_features(mfcc, max_len)
@@ -240,6 +240,36 @@ def get_dynamic_learning_rate_schedule(initial_lr=0.0001, total_steps=10000):
     )
     return lr_schedule
 
+# Plot accuracy and loss for training and validation
+def plot_training_history(history, save_dir):
+    # Accuracy Plot
+    plt.figure(figsize=(10, 5))
+    plt.plot(history.history['accuracy'], label='Training Accuracy')
+    plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy')
+    plt.title('Training and Validation Accuracy')
+    plt.legend()
+    accuracy_plot_path = os.path.join(save_dir, "accuracy_plot_voice2.png")
+    plt.savefig(accuracy_plot_path)
+    print(f"Accuracy plot saved to {accuracy_plot_path}")
+    plt.show()
+    plt.close()
+
+    # Loss Plot
+    plt.figure(figsize=(10, 5))
+    plt.plot(history.history['loss'], label='Training Loss')
+    plt.plot(history.history['val_loss'], label='Validation Loss')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.title('Training and Validation Loss')
+    plt.legend()
+    loss_plot_path = os.path.join(save_dir, "loss_plot_voice2.png")
+    plt.savefig(loss_plot_path)
+    print(f"Loss plot saved to {loss_plot_path}")
+    plt.show()
+    plt.close()
+    
 # Main script for training the model
 if __name__ == "__main__":
     print("Loading data...")
@@ -290,7 +320,7 @@ if __name__ == "__main__":
     # Save Model and Label Map
     os.makedirs(MODEL_DIRECTORY, exist_ok=True)
     model.save(os.path.join(MODEL_DIRECTORY, MODEL_NAME))
-    with open(os.path.join(MODEL_DIRECTORY, "label_map.txt"), "w") as f:
+    with open(os.path.join(MODEL_DIRECTORY, "label_map2.txt"), "w") as f:
         for label, idx in label_map.items():
             f.write(f"{label}\t{idx}\n")
     print("Model and label map saved.")
@@ -317,3 +347,11 @@ if __name__ == "__main__":
     plt.ylabel('True')
     plt.title('Confusion Matrix')
     plt.show()
+    
+    # Save the plot as an image
+    confusion_matrix_path = os.path.join(MODEL_DIRECTORY, "confusion_matrix_voice2.png")
+    plt.savefig(confusion_matrix_path)
+    plt.close()  # Close the plot to free memory
+
+    print(f"Confusion matrix saved to {confusion_matrix_path}")
+    # plot_training_history(history, MODEL_DIRECTORY)

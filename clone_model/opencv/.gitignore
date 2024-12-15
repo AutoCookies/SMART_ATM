@@ -7,8 +7,9 @@
 /dataSources/
 /dataSources.local.xml
 
-env
+.venv
 /.idea/data
 models
 stuff_to_enhance_model
-.env
+env
+.vscode

@@ -11,10 +11,10 @@ class TransactionLog:
         """
         self.transaction_id = transaction_id
         self.transaction_type = transaction_type
-        self.account_number = account_number
+        self.account_number = account_number # Nếu có
         self.amount = amount
         self.date = date
-        self.note = note
+        self.note = note # Nếu có 
 
     def __str__(self):
         return (
