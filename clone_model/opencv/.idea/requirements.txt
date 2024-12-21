@@ -14,3 +14,4 @@ mediapipe
 pygame
 python-dotenv
 SpeechRecognition
+tqdm

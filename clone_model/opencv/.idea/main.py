@@ -22,7 +22,7 @@ import threading
 import tensorflow as tf
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
-
+from testingFromWebCam import load_c3d_model, display_video_with_predictions_from_webcam
 
 load_dotenv()
 stop_flag = False
@@ -805,7 +805,7 @@ def fingerprint_upload_window(cap):
     prediction_label.pack(pady=10)
 
     def upload_fingerprint():
-        file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.png;*.jpg;*.jpeg;*.bmp")])
+        file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.bmp")])
         if file_path:
             img = Image.open(file_path)
             img = img.resize((200, 200), Image.Resampling.LANCZOS)
@@ -1007,16 +1007,31 @@ def show_locked_screen():
     lock_label = tk.Label(root, text="APPLICATION LOCKED\nSOS DETECTED", font=("Arial", 20), fg="red")
     lock_label.pack(expand=True)
 
+def anomaly_dect ():
+    
+    # Load mô hình và sử dụng webcam
+    c3d_model = load_c3d_model()
+
+    model_path = "models\\anomaly_model\\anomaly_detection_model3.h5"
+    
+    tf_model = load_model(model_path)
+        
+    # Dùng webcam để test
+    if display_video_with_predictions_from_webcam(c3d_model, tf_model, fps=180):
+        show_locked_screen()
+    
 def begin_GUI(root):
     cap = cv2.VideoCapture(0)
 
     root.title("SMART ATM SYSTEM")
     tk.Label(root, text="CHÀO MỪNG BẠN ĐẾN VỚI ATM THÔNG MINH!").pack(pady=20)
     face_thread = threading.Thread(target=detect_face_and_greet, args=(cap,), daemon=True)
-    hand_thread = threading.Thread(target=detect_hand, args=(cap,), daemon=True)
+    # hand_thread = threading.Thread(target=detect_hand, args=(cap,), daemon=True)
+    anomaly_thread = threading.Thread(target = anomaly_dect)
 
     face_thread.start()
-    hand_thread.start()
+    # hand_thread.start()
+    anomaly_thread.start()
         
     root.mainloop()
     cap.release()
