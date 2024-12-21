@@ -4,11 +4,11 @@ SMART ATM SYSTEM is a program could help you create an ATM that will use your Fi
 If you do not have your own pre-trained model, you can use mine. the train_model.py is for face regconition, train_voice_model.py is for NLP.
 ## HOW TO USE?
 You need to download the requirement.txt inside that
-Then add your own data to the /.idea folder, then your own pre-trained model.
+Then add your own data to the /.idea folder, then your own pre-trained model, or you can use mine.
 Also add your own user_data.
 Each user contains:
   Imgages
   Videos
   Fingerprints
-After completed all the steps, do the python run ATM.py to start the program
+After completed all the steps, do the python run main.py to start the program
 Good luck!
